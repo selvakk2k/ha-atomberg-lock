@@ -3,11 +3,11 @@
   "name": "Atomberg Smart Lock",
   "codeowners": ["@selvakk2k"],
   "config_flow": true,
-  "documentation": "https://github.com/selvakk2k/atomberg-py",
-  "issue_tracker": "https://github.com/selvakk2k/atomberg-py/issues",
+  "documentation": "https://github.com/selvakk2k/ha-atomberg-lock",
+  "issue_tracker": "https://github.com/selvakk2k/ha-atomberg-lock/issues",
   "integration_type": "device",
   "iot_class": "local_push",
   "dependencies": ["bluetooth"],
   "requirements": [],
-  "version": "1.0.0"
+  "version": "1.0.0-alpha.1"
 }
