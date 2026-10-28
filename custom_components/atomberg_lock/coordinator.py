@@ -72,6 +72,10 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_event: LiveEvent | None = None
         self.is_available = True
         self.discovered_slots: dict[int, str] = {14: "Fingerprint"}
+        self.last_generated_otp: str | None = None
+        self.last_otp_expires_at: str | None = None
+        self.last_otp_valid_until_ts: int | None = None
+        self.last_otp_duration_hours: float | None = None
 
         self._lock_device: AtombergLockBLE | None = None
         self._busy = asyncio.Lock()
@@ -185,6 +189,10 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "slot_id": self.last_event.slot_id if self.last_event else None,
             "pin_code": self.last_event.pin_code if self.last_event else None,
             "timestamp": self.last_event.timestamp if self.last_event else None,
+            "last_generated_otp": self.last_generated_otp,
+            "last_otp_expires_at": self.last_otp_expires_at,
+            "last_otp_valid_until_ts": self.last_otp_valid_until_ts,
+            "last_otp_duration_hours": self.last_otp_duration_hours,
         }
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -351,6 +359,12 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             otp,
             expires_dt.isoformat(),
         )
+
+        self.last_generated_otp = otp
+        self.last_otp_expires_at = expires_dt.isoformat()
+        self.last_otp_valid_until_ts = int(expires_dt.timestamp())
+        self.last_otp_duration_hours = duration_hours
+        self.async_set_updated_data(self._build_data_dict())
 
         return {
             "otp": otp,

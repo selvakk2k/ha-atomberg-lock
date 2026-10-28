@@ -75,5 +75,32 @@
     "error": {
       "invalid_slot": "Please enter a valid slot number between 1 and 65534."
     }
+  },
+  "entity": {
+    "button": {
+      "generate_otp": {
+        "name": "Generate OTP"
+      },
+      "sync_status": {
+        "name": "Sync Status & Logs"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Battery"
+      },
+      "last_event": {
+        "name": "Last Event"
+      },
+      "last_generated_otp": {
+        "name": "Last Generated OTP"
+      },
+      "last_unlock_method": {
+        "name": "Last Unlock Method"
+      },
+      "last_user": {
+        "name": "Last User"
+      }
+    }
   }
 }

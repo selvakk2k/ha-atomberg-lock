@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -33,6 +35,7 @@ async def async_setup_entry(
         AtombergLastUnlockMethodSensor(coordinator),
         AtombergLastUserSensor(coordinator),
         AtombergLastEventSensor(coordinator),
+        AtombergLastGeneratedOtpSensor(coordinator),
     ])
 
 
@@ -117,3 +120,32 @@ class AtombergLastEventSensor(AtombergLockBaseEntity, SensorEntity):
         if not self.coordinator.last_event:
             return None
         return self.coordinator.last_event.event
+
+
+class AtombergLastGeneratedOtpSensor(AtombergLockBaseEntity, SensorEntity):
+    """Sensor reporting the last generated offline OTP PIN."""
+
+    _attr_icon = "mdi:shield-key"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: AtombergLockCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, key="last_generated_otp")
+        self._attr_name = "Last Generated OTP"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the last generated OTP PIN."""
+        return self.coordinator.last_generated_otp
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        attrs: dict[str, Any] = {}
+        if self.coordinator.last_otp_expires_at:
+            attrs["expires_at"] = self.coordinator.last_otp_expires_at
+        if self.coordinator.last_otp_valid_until_ts:
+            attrs["valid_until_timestamp"] = self.coordinator.last_otp_valid_until_ts
+        if self.coordinator.last_otp_duration_hours is not None:
+            attrs["duration_hours"] = self.coordinator.last_otp_duration_hours
+        return attrs
