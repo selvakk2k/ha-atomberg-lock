@@ -1,0 +1,22 @@
+generate_otp:
+  name: Generate One-Time Password
+  description: Generates a temporary guest OTP for the lock keypad.
+  fields:
+    device_id:
+      name: Device
+      description: Atomberg lock device to generate the OTP for.
+      required: false
+      selector:
+        device:
+          integration: atomberg_lock
+    duration_hours:
+      name: Duration (Hours)
+      description: Number of hours the OTP should remain valid (default 0.5 hours / until next half-hour boundary).
+      required: false
+      default: 0.5
+      selector:
+        number:
+          min: 0.5
+          max: 24.0
+          step: 0.5
+          unit_of_measurement: hours

@@ -17,7 +17,9 @@ if _LIB_PATH not in sys.path:
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
 from .coordinator import AtombergLockCoordinator
@@ -42,6 +44,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_update_options))
+
+    async def async_handle_generate_otp(call: ServiceCall) -> ServiceResponse:
+        """Handle generate OTP service call."""
+        coordinator: AtombergLockCoordinator | None = None
+        device_id = call.data.get("device_id")
+        if device_id:
+            dev_reg = dr.async_get(hass)
+            device = dev_reg.async_get(device_id)
+            if device:
+                for c_entry_id in device.config_entries:
+                    if c_entry_id in hass.data.get(DOMAIN, {}):
+                        coordinator = hass.data[DOMAIN][c_entry_id]
+                        break
+        if coordinator is None and hass.data.get(DOMAIN):
+            coordinator = next(iter(hass.data[DOMAIN].values()))
+
+        if coordinator is None:
+            raise HomeAssistantError("No Atomberg lock available to generate OTP.")
+
+        duration_hours = float(call.data.get("duration_hours", 0.5))
+        return await coordinator.async_generate_otp(duration_hours=duration_hours)
+
+    if not hass.services.has_service(DOMAIN, "generate_otp"):
+        hass.services.async_register(
+            DOMAIN,
+            "generate_otp",
+            async_handle_generate_otp,
+            supports_response=SupportsResponse.ONLY,
+        )
 
     return True
 

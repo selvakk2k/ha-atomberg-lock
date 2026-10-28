@@ -15,12 +15,12 @@
       },
       "cloud": {
         "title": "Atomberg Cloud Account Sync",
-        "description": "Authenticate with your Atomberg account to import your smart locks:\n\n1. **[Click here to log in to Atomberg]({auth_url})** *(opens in a new tab)*.\n2. Sign in with Email, Google, Apple, or Facebook.\n3. After signing in, your browser redirects to a URL starting with `https://app.atomberg-iot.com/?code=...`.\n4. Copy the complete address from your browser's address bar and paste it below:\n\n*(If the link does not open, copy this URL into your browser: {auth_url})*",
+        "description": "Authenticate with your Atomberg account to import your smart locks:\n\n1. **[Log in to Atomberg]({auth_url})** *(opens in a new tab)*.\n2. Sign in with Email, Google, Apple, or Facebook.\n3. After signing in, your browser redirects to a page containing `?code=...`.\n4. Copy the complete address from your browser's address bar and paste it below.",
         "data": {
           "auth_code": "Redirect URL or Authorization Code"
         },
         "data_description": {
-          "auth_code": "Paste the complete redirected URL (starting with https://app.atomberg-iot.com/?code=...) or the auth code."
+          "auth_code": "Paste the complete redirected URL (containing ?code=...) or the authorization code."
         }
       },
       "manual": {

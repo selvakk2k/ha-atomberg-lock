@@ -321,3 +321,42 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 raise HomeAssistantError(f"Failed to sync Atomberg lock: {err}") from err
             finally:
                 await lock.disconnect()
+
+    async def async_generate_otp(self, duration_hours: float = 0.5) -> dict[str, Any]:
+        """Generate an offline guest OTP for the lock keypad."""
+        from pyatomberg.lock.dynamic_pin import calculate_offline_otp, quantize_expiration_time
+
+        auth_code = str(
+            self.entry.data.get("general_auth_code")
+            or self.entry.data.get(CONF_MASTER_KEY)
+            or ""
+        )
+        aes_key = str(
+            self.entry.data.get("dna_key")
+            or self.entry.data.get(CONF_MASTER_KEY)
+            or ""
+        )
+
+        expires_dt = quantize_expiration_time(duration_hours=duration_hours)
+        otp = calculate_offline_otp(
+            auth_code=auth_code,
+            aes_key=aes_key,
+            target_dt=expires_dt,
+            lock_mac=self.address,
+        )
+
+        _LOGGER.info(
+            "Generated offline OTP for Atomberg lock %s: %s (expires: %s)",
+            self.address,
+            otp,
+            expires_dt.isoformat(),
+        )
+
+        return {
+            "otp": otp,
+            "expires_at": expires_dt.isoformat(),
+            "valid_until_timestamp": int(expires_dt.timestamp()),
+            "duration_hours": duration_hours,
+            "lock_mac": self.address,
+        }
+
