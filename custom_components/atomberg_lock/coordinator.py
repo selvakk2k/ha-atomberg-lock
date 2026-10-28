@@ -234,8 +234,8 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             elif not ts:
                 self.unlock_history.append(rec)
         self.unlock_history.sort(key=lambda x: x.get("raw_timestamp", 0), reverse=True)
-        if len(self.unlock_history) > 50:
-            self.unlock_history = self.unlock_history[:50]
+        if len(self.unlock_history) > 100:
+            self.unlock_history = self.unlock_history[:100]
 
     @property
     def is_cloud_connected(self) -> bool:
@@ -365,15 +365,15 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     records = await lock.fetch_incremental_logs(start_offset=0)
                     if records:
                         self._merge_unlock_records(records)
-                        latest = records[-1]
+                        latest = self.unlock_history[0] if self.unlock_history else records[0]
                         now_ts = int(time.time())
                         self.last_event = LiveEvent(
                             battery=latest.get("battery", self.battery_level or 100),
                             event=latest.get("event", "Hardware Event"),
                             credential_type=latest.get("credential_type", "Physical Credential"),
-                            slot_id=latest.get("slot", 0),
+                            slot_id=latest.get("slot_id") or latest.get("slot", 0),
                             pin_code=latest.get("pin", ""),
-                            timestamp=latest.get("datetime", format_ist_time(now_ts)),
+                            timestamp=latest.get("timestamp") or latest.get("datetime", format_ist_time(now_ts)),
                             raw_timestamp=latest.get("raw_timestamp", now_ts),
                             is_unlocked="Unlocked" in latest.get("event", ""),
                             is_auto_lock="Auto-Lock" in latest.get("event", ""),

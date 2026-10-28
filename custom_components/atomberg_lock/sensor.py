@@ -81,9 +81,14 @@ class AtombergLastUnlockMethodSensor(AtombergLockBaseEntity, SensorEntity):
     @property
     def native_value(self) -> str | None:
         """Return the last credential type used."""
-        if not self.coordinator.last_event:
-            return None
-        return self.coordinator.last_event.credential_type
+        if self.coordinator.last_event and self.coordinator.last_event.credential_type:
+            return self.coordinator.last_event.credential_type
+        if self.coordinator.unlock_history:
+            for rec in self.coordinator.unlock_history:
+                cred = rec.get("credential_type")
+                if cred:
+                    return cred
+        return None
 
 
 class AtombergLastUserSensor(AtombergLockBaseEntity, SensorEntity):
