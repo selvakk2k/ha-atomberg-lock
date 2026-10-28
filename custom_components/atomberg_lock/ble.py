@@ -17,8 +17,8 @@ from bleak_retry_connector import BleakClientWithServiceCache, establish_connect
 
 from homeassistant.exceptions import HomeAssistantError
 
-from .pyatomberg.crypto import decrypt_aes_ecb
-from .pyatomberg.lock.hsj_protocol import (
+from pyatomberg.crypto import decrypt_aes_ecb
+from pyatomberg.lock.hsj_protocol import (
     DEFAULT_SLOT_MAPPINGS,
     NOTIFY_UUID,
     OP_BATTERY,

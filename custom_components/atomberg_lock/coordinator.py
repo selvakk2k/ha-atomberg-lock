@@ -20,7 +20,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .ble import AtombergLockBLE
-from .pyatomberg.lock.hsj_protocol import LiveEvent, format_ist_time
+from pyatomberg.lock.hsj_protocol import LiveEvent, format_ist_time
 
 from .const import AUTO_LOCK_SECONDS, CONF_MAC, CONF_MASTER_KEY, CONF_SALT, CONF_SLOT_MAPPINGS, DOMAIN
 
@@ -324,7 +324,7 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_generate_otp(self, duration_hours: float = 0.5) -> dict[str, Any]:
         """Generate an offline guest OTP for the lock keypad."""
-        from .pyatomberg.lock.dynamic_pin import calculate_offline_otp, quantize_expiration_time
+        from pyatomberg.lock.dynamic_pin import calculate_offline_otp, quantize_expiration_time
 
         auth_code = str(
             self.entry.data.get("general_auth_code")

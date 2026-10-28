@@ -3,15 +3,8 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-import sys
 from typing import Any
 import urllib.parse
-
-# Ensure bundled pyatomberg can be imported directly
-_LIB_PATH = str(Path(__file__).parent)
-if _LIB_PATH not in sys.path:
-    sys.path.insert(0, _LIB_PATH)
 
 from homeassistant import config_entries
 from homeassistant.components import bluetooth
