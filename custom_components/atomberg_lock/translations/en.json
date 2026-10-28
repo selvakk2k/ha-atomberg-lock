@@ -50,6 +50,15 @@
   "options": {
     "step": {
       "init": {
+        "title": "Atomberg Lock Configuration",
+        "description": "Choose what you want to configure for this lock.",
+        "menu_options": {
+          "slot_mappings": "Credential & Slot Mappings",
+          "settings": "Lock Settings & Timing",
+          "view_credentials": "View Device Credentials & Keys"
+        }
+      },
+      "slot_mappings": {
         "title": "Select Credential Slot",
         "description": "Select an enrolled credential slot from the dropdown to assign or update its name, or choose **Add Custom Slot Number...** to configure a specific slot.",
         "data": {
@@ -69,6 +78,31 @@
         "data_description": {
           "slot_id": "Slot number (1 to 65534).",
           "name": "Display name used for this credential in Home Assistant."
+        }
+      },
+      "settings": {
+        "title": "Lock Settings",
+        "description": "Configure operation and timing parameters for your lock.",
+        "data": {
+          "auto_lock_seconds": "Auto-Lock Delay",
+          "scan_interval_minutes": "Periodic Background Sync Interval",
+          "auth_token": "Atomberg Cloud Auth Token"
+        },
+        "data_description": {
+          "auto_lock_seconds": "Number of seconds before the UI resets the lock state to locked after an unlock.",
+          "scan_interval_minutes": "Minutes between periodic Bluetooth background checks for battery and event log sync.",
+          "auth_token": "Optional bearer token from Atomberg Cloud. Required to generate 6-digit dynamic OTPs on the lock keypad."
+        }
+      },
+      "view_credentials": {
+        "title": "Device Credentials & Keys",
+        "description": "These cryptographic keys grant direct offline Bluetooth control of your lock. They are censored (••••••) by default; click the eye button on each field to unmask or copy. Keep them private and never share them publicly.",
+        "data": {
+          "device_mac": "Bluetooth MAC Address",
+          "static_master_key": "Master Key",
+          "lock_salt": "Lock Salt",
+          "general_auth_code": "General Auth Code",
+          "temp_auth_code": "Temporary Auth Code"
         }
       }
     },

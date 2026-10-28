@@ -64,7 +64,7 @@ class AtombergGenerateOtpButton(AtombergLockBaseEntity, ButtonEntity):
             self.hass,
             f"**Atomberg Guest OTP:** `{otp}`\n\n"
             f"**Valid Until:** {expires_at}\n\n"
-            f"Enter this 8-digit code followed by `#` on the lock keypad.",
+            f"Enter this 6-digit code followed by `#` on the lock keypad.",
             title="Atomberg Smart Lock OTP",
             notification_id=f"atomberg_otp_{clean_mac}",
         )

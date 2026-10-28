@@ -357,41 +357,53 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await lock.disconnect()
 
     async def async_generate_otp(self, duration_hours: float = 0.5) -> dict[str, Any]:
-        """Generate an offline guest OTP for the lock keypad."""
-        from pyatomberg.lock.dynamic_pin import calculate_offline_otp, quantize_expiration_time
+        """Generate a dynamic OTP for the lock keypad."""
+        from pyatomberg.lock.cloud_sync import AtombergCloudSync
+        from pyatomberg.lock.dynamic_pin import quantize_expiration_time
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-        auth_code = str(
-            self.entry.data.get("general_auth_code")
-            or self.entry.data.get(CONF_MASTER_KEY)
-            or ""
-        )
-        aes_key = str(
-            self.entry.data.get("dna_key")
-            or self.entry.data.get(CONF_MASTER_KEY)
-            or ""
-        )
+        auth_token = self.entry.options.get("auth_token") or self.entry.data.get("auth_token")
+        pairing_method = self.entry.data.get(CONF_PAIRING_METHOD)
 
         expires_dt = quantize_expiration_time(duration_hours=duration_hours)
-        otp = calculate_offline_otp(
-            auth_code=auth_code,
-            aes_key=aes_key,
-            target_dt=expires_dt,
-            lock_mac=self.address,
-        )
+        now_ts = int(time.time())
+        otp: str | None = None
 
-        _LOGGER.info(
-            "Generated offline OTP for Atomberg lock %s: %s (expires: %s)",
-            self.address,
-            otp,
-            expires_dt.isoformat(),
-        )
+        if auth_token:
+            session = async_get_clientsession(self.hass)
+            sync_client = AtombergCloudSync(access_token=auth_token, session=session)
+            try:
+                res = await sync_client.get_dynamic_otp(
+                    device_id=self.address,
+                    start_time=now_ts,
+                    end_time=int(expires_dt.timestamp()),
+                )
+                otp = str(res["otp"])
+                _LOGGER.info(
+                    "Retrieved active cloud OTP for Atomberg lock %s: %s (valid until %s)",
+                    self.address,
+                    otp,
+                    expires_dt.isoformat(),
+                )
+            except Exception as err:
+                _LOGGER.error("Failed to fetch dynamic OTP from Atomberg Cloud: %s", err)
+                raise HomeAssistantError(f"Cloud OTP fetch failed: {err}") from err
+        else:
+            if pairing_method == METHOD_MANUAL:
+                raise HomeAssistantError(
+                    "Remote OTP requires an active Atomberg Cloud connection. "
+                    "The SL1 Pro keypad requires pre-provisioned 6-digit OTPs synced from your Atomberg account. "
+                    "Please connect your Atomberg Cloud credentials in integration settings."
+                )
+            raise HomeAssistantError(
+                "Missing Atomberg Cloud credentials. Please re-authenticate the integration."
+            )
 
         self.last_generated_otp = otp
         self.last_otp_expires_at = expires_dt.isoformat()
         self.last_otp_valid_until_ts = int(expires_dt.timestamp())
         self.last_otp_duration_hours = duration_hours
 
-        now_ts = int(time.time())
         otp_entry = {
             "otp": otp,
             "created_at": format_ist_time(now_ts),

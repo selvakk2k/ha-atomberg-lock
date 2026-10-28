@@ -19,6 +19,7 @@ from pyatomberg.const import COGNITO_REDIRECT_URI
 from pyatomberg.lock.cloud_sync import AtombergCloudSync
 
 from .const import (
+    AUTO_LOCK_SECONDS,
     CONF_MAC,
     CONF_MASTER_KEY,
     CONF_PAIRING_METHOD,
@@ -117,6 +118,9 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 CONF_PAIRING_METHOD: METHOD_CLOUD,
                                 "name": first_lock.name or "Atomberg Smart Lock",
                                 "model": first_lock.model or "smart_lock",
+                                "auth_token": auth_token,
+                                "temp_auth_code": first_lock.temp_auth_code or "",
+                                "general_auth_code": first_lock.general_auth_code or "",
                             },
                         )
                 except Exception as err:
@@ -161,6 +165,12 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
         return self.async_show_form(step_id="manual", data_schema=schema, errors=errors)
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle reconfiguration of the lock."""
+        return await self.async_step_user()
+
     @staticmethod
     @callback
     def async_get_options_flow(
@@ -171,7 +181,7 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class AtombergLockOptionsFlow(config_entries.OptionsFlow):
-    """Handle options for Atomberg Lock (e.g. user/slot mappings)."""
+    """Handle options for Atomberg Lock (e.g. user/slot mappings, settings, and credentials)."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
@@ -179,6 +189,15 @@ class AtombergLockOptionsFlow(config_entries.OptionsFlow):
         self._selected_slot: str | None = None
 
     async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Top-level options menu."""
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["slot_mappings", "settings", "view_credentials"],
+        )
+
+    async def async_step_slot_mappings(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Step 1: Choose which slot to name or configure."""
@@ -226,7 +245,7 @@ class AtombergLockOptionsFlow(config_entries.OptionsFlow):
         })
         schema = self.add_suggested_values_to_schema(schema, {"slot_id": default_slot})
 
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="slot_mappings", data_schema=schema)
 
     async def async_step_edit_slot(
         self, user_input: dict[str, Any] | None = None
@@ -260,10 +279,10 @@ class AtombergLockOptionsFlow(config_entries.OptionsFlow):
                 else:
                     updated_mappings.pop(target_slot, None)
 
-                return self.async_create_entry(
-                    title="",
-                    data={CONF_SLOT_MAPPINGS: {str(k): v for k, v in updated_mappings.items()}},
-                )
+                new_options = dict(self._config_entry.options)
+                new_options[CONF_SLOT_MAPPINGS] = {str(k): v for k, v in updated_mappings.items()}
+                return self.async_create_entry(title="", data=new_options)
+
             errors["base"] = "invalid_slot"
 
         fields: dict[Any, Any] = {}
@@ -299,4 +318,90 @@ class AtombergLockOptionsFlow(config_entries.OptionsFlow):
             data_schema=schema,
             errors=errors,
             description_placeholders={"slot_id": slot_title_placeholder},
+        )
+
+    async def async_step_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step: Manage lock timing and operation parameters."""
+        if user_input is not None:
+            new_options = dict(self._config_entry.options)
+            new_options.update(user_input)
+            return self.async_create_entry(title="", data=new_options)
+
+        auto_lock = self._config_entry.options.get("auto_lock_seconds", AUTO_LOCK_SECONDS)
+        scan_interval = self._config_entry.options.get("scan_interval_minutes", 30)
+        curr_token = self._config_entry.options.get("auth_token") or self._config_entry.data.get("auth_token") or ""
+
+        schema = vol.Schema({
+            vol.Optional("auto_lock_seconds", default=auto_lock): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=3,
+                    max=60,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="seconds",
+                )
+            ),
+            vol.Optional("scan_interval_minutes", default=scan_interval): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=5,
+                    max=1440,
+                    step=5,
+                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="minutes",
+                )
+            ),
+            vol.Optional("auth_token", default=curr_token): selector.TextSelector(
+                selector.TextSelectorConfig(
+                    type=selector.TextSelectorType.PASSWORD,
+                    autocomplete="off",
+                )
+            ),
+        })
+        return self.async_show_form(step_id="settings", data_schema=schema)
+
+    async def async_step_view_credentials(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step: Display censored credentials with reveal/view toggle buttons."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=self._config_entry.options)
+
+        data = self._config_entry.data
+        mac = str(data.get(CONF_MAC, "")).upper()
+        master_key = str(data.get(CONF_MASTER_KEY, ""))
+        salt = str(data.get(CONF_SALT, ""))
+        gen_auth = str(data.get("general_auth_code", ""))
+        temp_auth = str(data.get("temp_auth_code", ""))
+        method = str(data.get(CONF_PAIRING_METHOD, "manual"))
+
+        # Build schema using TextSelectorType.PASSWORD so all fields are censored (••••••)
+        # Home Assistant renders an eye-icon reveal button on each password field.
+        fields: dict[Any, Any] = {
+            vol.Optional("device_mac", default=mac): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
+            vol.Optional("static_master_key", default=master_key): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+            vol.Optional("lock_salt", default=salt): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+        }
+
+        if gen_auth:
+            fields[vol.Optional("general_auth_code", default=gen_auth)] = selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            )
+        if temp_auth:
+            fields[vol.Optional("temp_auth_code", default=temp_auth)] = selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            )
+
+        schema = vol.Schema(fields)
+        return self.async_show_form(
+            step_id="view_credentials",
+            data_schema=schema,
+            description_placeholders={"pairing_method": method},
         )
