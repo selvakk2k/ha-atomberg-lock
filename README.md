@@ -142,5 +142,5 @@ Atomberg locks support offline algorithmic OTP keypad PINs that guests can enter
 ## Credits & License
 
 - Based on protocol reverse-engineering by **[dreadedlama/atomberg-lock](https://github.com/dreadedlama/atomberg-lock)**.
-- Companion Python library: **[`atomberg-py`](https://github.com/selvakk2k/atomberg-py)**.
+- Companion Python library: **[`pyatomberg`](https://github.com/selvakk2k/pyatomberg)**.
 - Licensed under the **GNU General Public License v3.0 (GPL-3.0)**. See [LICENSE](LICENSE) for details.
