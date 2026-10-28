@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -148,4 +149,11 @@ class AtombergLastGeneratedOtpSensor(AtombergLockBaseEntity, SensorEntity):
             attrs["valid_until_timestamp"] = self.coordinator.last_otp_valid_until_ts
         if self.coordinator.last_otp_duration_hours is not None:
             attrs["duration_hours"] = self.coordinator.last_otp_duration_hours
+
+        now_ts = int(time.time())
+        attrs["active_otps"] = [
+            o for o in self.coordinator.otp_history
+            if o.get("valid_until_timestamp", 0) > now_ts
+        ]
+        attrs["otp_history"] = list(reversed(self.coordinator.otp_history))[:15]
         return attrs

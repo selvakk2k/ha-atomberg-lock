@@ -82,9 +82,30 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._relock_task: asyncio.Task[None] | None = None
         self._cancel_bluetooth: Any = None
         self._log_store = Store[list[dict[str, Any]]](hass, 1, f"{DOMAIN}_{entry.entry_id}_logs")
+        self._otp_store = Store[list[dict[str, Any]]](hass, 1, f"{DOMAIN}_{entry.entry_id}_otps")
+        self.otp_history: list[dict[str, Any]] = []
 
     async def async_start(self) -> None:
         """Start listening for live Bluetooth advertisements via ESPHome Bluetooth Proxies."""
+        try:
+            stored_otps = await self._otp_store.async_load()
+            if stored_otps and isinstance(stored_otps, list):
+                self.otp_history = stored_otps
+                now_ts = int(time.time())
+                active = [
+                    o for o in self.otp_history
+                    if o.get("valid_until_timestamp", 0) > now_ts
+                ]
+                if active:
+                    last = active[-1]
+                    self.last_generated_otp = last.get("otp")
+                    self.last_otp_expires_at = last.get("expires_at")
+                    self.last_otp_valid_until_ts = last.get("valid_until_timestamp")
+                    self.last_otp_duration_hours = last.get("duration_hours")
+                    self.async_set_updated_data(self._build_data_dict())
+        except Exception as err:
+            _LOGGER.debug("Could not load stored OTP history: %s", err)
+
         self._cancel_bluetooth = bluetooth.async_register_callback(
             self.hass,
             self._handle_bluetooth_event,
@@ -193,6 +214,11 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "last_otp_expires_at": self.last_otp_expires_at,
             "last_otp_valid_until_ts": self.last_otp_valid_until_ts,
             "last_otp_duration_hours": self.last_otp_duration_hours,
+            "active_otps": [
+                o for o in self.otp_history
+                if o.get("valid_until_timestamp", 0) > int(time.time())
+            ],
+            "otp_history": list(reversed(self.otp_history)),
         }
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -364,6 +390,25 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_otp_expires_at = expires_dt.isoformat()
         self.last_otp_valid_until_ts = int(expires_dt.timestamp())
         self.last_otp_duration_hours = duration_hours
+
+        now_ts = int(time.time())
+        otp_entry = {
+            "otp": otp,
+            "created_at": format_ist_time(now_ts),
+            "created_timestamp": now_ts,
+            "expires_at": expires_dt.isoformat(),
+            "valid_until_timestamp": int(expires_dt.timestamp()),
+            "duration_hours": duration_hours,
+            "lock_mac": self.address,
+        }
+        self.otp_history.append(otp_entry)
+        if len(self.otp_history) > 30:
+            self.otp_history = self.otp_history[-30:]
+        try:
+            await self._otp_store.async_save(self.otp_history)
+        except Exception as s_err:
+            _LOGGER.debug("Could not save OTP history: %s", s_err)
+
         self.async_set_updated_data(self._build_data_dict())
 
         return {
@@ -372,5 +417,9 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "valid_until_timestamp": int(expires_dt.timestamp()),
             "duration_hours": duration_hours,
             "lock_mac": self.address,
+            "active_otps": [
+                o for o in self.otp_history
+                if o.get("valid_until_timestamp", 0) > int(time.time())
+            ],
         }
 
