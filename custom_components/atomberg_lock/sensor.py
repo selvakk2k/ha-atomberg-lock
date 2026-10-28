@@ -39,6 +39,13 @@ async def async_setup_entry(
     ]
     if coordinator.is_cloud_connected:
         entities.append(AtombergLastGeneratedOtpSensor(coordinator))
+    else:
+        # Prune stale last_generated_otp sensor if it exists in the entity registry
+        from homeassistant.helpers import entity_registry as er
+        ent_reg = er.async_get(hass)
+        unique_id = f"{coordinator.address.lower()}_last_generated_otp"
+        if entity_id := ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id):
+            ent_reg.async_remove(entity_id)
     async_add_entities(entities)
 
 

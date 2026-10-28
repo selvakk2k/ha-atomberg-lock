@@ -92,6 +92,22 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             stored_logs = await self._log_store.async_load()
             if stored_logs and isinstance(stored_logs, list):
                 self.unlock_history = stored_logs
+                if not self.last_event and self.unlock_history:
+                    latest = self.unlock_history[0]
+                    now_ts = int(time.time())
+                    self.last_event = LiveEvent(
+                        battery=latest.get("battery", self.battery_level or 100),
+                        event=latest.get("event", "Hardware Event"),
+                        credential_type=latest.get("credential_type", "Physical Credential"),
+                        slot_id=latest.get("slot_id") or latest.get("slot", 0),
+                        pin_code=latest.get("pin", ""),
+                        timestamp=latest.get("timestamp") or latest.get("datetime", format_ist_time(now_ts)),
+                        raw_timestamp=latest.get("raw_timestamp", now_ts),
+                        is_unlocked="Unlocked" in latest.get("event", ""),
+                        is_auto_lock="Auto-Lock" in latest.get("event", ""),
+                        is_tamper=False,
+                    )
+                self.async_set_updated_data(self._build_data_dict())
         except Exception as err:
             _LOGGER.debug("Could not load stored unlock history: %s", err)
 
@@ -110,7 +126,7 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.last_otp_expires_at = last.get("expires_at")
                     self.last_otp_valid_until_ts = last.get("valid_until_timestamp")
                     self.last_otp_duration_hours = last.get("duration_hours")
-                    self.async_set_updated_data(self._build_data_dict())
+                self.async_set_updated_data(self._build_data_dict())
         except Exception as err:
             _LOGGER.debug("Could not load stored OTP history: %s", err)
 

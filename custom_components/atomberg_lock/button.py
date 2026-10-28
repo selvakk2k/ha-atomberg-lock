@@ -24,6 +24,13 @@ async def async_setup_entry(
     entities: list[ButtonEntity] = [AtombergSyncButton(coordinator)]
     if coordinator.is_cloud_connected:
         entities.append(AtombergGenerateOtpButton(coordinator))
+    else:
+        # Prune stale generate_otp button if it exists in the entity registry
+        from homeassistant.helpers import entity_registry as er
+        ent_reg = er.async_get(hass)
+        unique_id = f"{coordinator.address.lower()}_generate_otp"
+        if entity_id := ent_reg.async_get_entity_id("button", DOMAIN, unique_id):
+            ent_reg.async_remove(entity_id)
     async_add_entities(entities)
 
 
