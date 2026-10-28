@@ -71,7 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN,
             "generate_otp",
             async_handle_generate_otp,
-            supports_response=SupportsResponse.ONLY,
+            supports_response=SupportsResponse.OPTIONAL,
         )
 
     return True
