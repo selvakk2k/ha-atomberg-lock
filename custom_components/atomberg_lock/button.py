@@ -21,10 +21,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Atomberg lock button entities from a config entry."""
     coordinator: AtombergLockCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([
-        AtombergSyncButton(coordinator),
-        AtombergGenerateOtpButton(coordinator),
-    ])
+    entities: list[ButtonEntity] = [AtombergSyncButton(coordinator)]
+    if coordinator.is_cloud_connected:
+        entities.append(AtombergGenerateOtpButton(coordinator))
+    async_add_entities(entities)
 
 
 class AtombergSyncButton(AtombergLockBaseEntity, ButtonEntity):

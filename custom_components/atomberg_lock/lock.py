@@ -53,6 +53,7 @@ class AtombergLockEntity(AtombergLockBaseEntity, LockEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return hardware event metadata and unlock history."""
         attrs: dict[str, Any] = {
+            "is_cloud_connected": self.coordinator.is_cloud_connected,
             "unlock_history": self.coordinator.unlock_history,
             "unlock_count": len(self.coordinator.unlock_history),
         }

@@ -31,13 +31,15 @@ async def async_setup_entry(
     """Set up the Atomberg lock sensor entities from a config entry."""
     coordinator: AtombergLockCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    async_add_entities([
+    entities: list[SensorEntity] = [
         AtombergBatterySensor(coordinator),
         AtombergLastUnlockMethodSensor(coordinator),
         AtombergLastUserSensor(coordinator),
         AtombergLastEventSensor(coordinator),
-        AtombergLastGeneratedOtpSensor(coordinator),
-    ])
+    ]
+    if coordinator.is_cloud_connected:
+        entities.append(AtombergLastGeneratedOtpSensor(coordinator))
+    async_add_entities(entities)
 
 
 class AtombergBatterySensor(AtombergLockBaseEntity, SensorEntity):

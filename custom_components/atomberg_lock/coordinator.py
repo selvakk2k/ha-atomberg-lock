@@ -221,11 +221,17 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if len(self.unlock_history) > 50:
             self.unlock_history = self.unlock_history[:50]
 
+    @property
+    def is_cloud_connected(self) -> bool:
+        """Return True if lock has active Atomberg cloud credentials."""
+        return bool(self.entry.options.get("auth_token") or self.entry.data.get("auth_token"))
+
     def _build_data_dict(self) -> dict[str, Any]:
         """Build summary data dictionary for listeners."""
         return {
             "is_locked": self.is_locked,
             "is_unlocking": self.is_unlocking,
+            "is_cloud_connected": self.is_cloud_connected,
             "battery_level": self.battery_level,
             "last_event": self.last_event.event if self.last_event else None,
             "credential_type": self.last_event.credential_type if self.last_event else None,
@@ -319,7 +325,7 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await lock.disconnect()
 
     async def async_sync_device(self) -> None:
-        """Synchronize lock battery and event logs via BLE and/or Cloud Firestore."""
+        """Synchronize lock battery and event logs via BLE and optionally Cloud."""
         lock = self._ensure_lock_instance()
         ble_success = False
 
@@ -338,7 +344,7 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 except Exception as b_err:
                     _LOGGER.debug("Could not poll battery during sync: %s", b_err)
 
-                # Fetch Flash Event Logs
+                # Fetch Flash Event Logs over BLE
                 try:
                     records = await lock.fetch_incremental_logs(start_offset=0)
                     if records:
@@ -361,14 +367,14 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.debug("Could not fetch logs via BLE during sync: %s", l_err)
 
             except Exception as b_err:
-                _LOGGER.debug("BLE sync unavailable (%s), checking cloud logs...", b_err)
+                _LOGGER.warning("BLE sync currently unavailable for %s: %s", self.address, b_err)
             finally:
                 if ble_success:
                     await lock.disconnect()
 
-        # 2. Query Cloud Firestore history (merges events uploaded by mobile app)
-        auth_token = self.entry.options.get("auth_token") or self.entry.data.get("auth_token")
-        if auth_token:
+        # 2. Query Cloud Firestore history ONLY if device is cloud-connected (Manual devices remain 100% offline)
+        if self.is_cloud_connected:
+            auth_token = self.entry.options.get("auth_token") or self.entry.data.get("auth_token")
             try:
                 from homeassistant.helpers.aiohttp_client import async_get_clientsession
                 from pyatomberg.lock.cloud_sync import AtombergCloudSync
@@ -410,46 +416,38 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_generate_otp(self, duration_hours: float = 0.5) -> dict[str, Any]:
         """Generate a dynamic OTP for the lock keypad."""
+        if not self.is_cloud_connected:
+            raise HomeAssistantError(
+                "Remote OTP generation is only available for cloud-connected locks. "
+                "Manual offline locks do not support remote OTP."
+            )
+
         from pyatomberg.lock.cloud_sync import AtombergCloudSync
         from pyatomberg.lock.dynamic_pin import quantize_expiration_time
         from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
         auth_token = self.entry.options.get("auth_token") or self.entry.data.get("auth_token")
-        pairing_method = self.entry.data.get(CONF_PAIRING_METHOD)
-
         expires_dt = quantize_expiration_time(duration_hours=duration_hours)
         now_ts = int(time.time())
-        otp: str | None = None
 
-        if auth_token:
-            session = async_get_clientsession(self.hass)
-            sync_client = AtombergCloudSync(access_token=auth_token, session=session)
-            try:
-                res = await sync_client.get_dynamic_otp(
-                    device_id=self.address,
-                    start_time=now_ts,
-                    end_time=int(expires_dt.timestamp()),
-                )
-                otp = str(res["otp"])
-                _LOGGER.info(
-                    "Retrieved active cloud OTP for Atomberg lock %s: %s (valid until %s)",
-                    self.address,
-                    otp,
-                    expires_dt.isoformat(),
-                )
-            except Exception as err:
-                _LOGGER.error("Failed to fetch dynamic OTP from Atomberg Cloud: %s", err)
-                raise HomeAssistantError(f"Cloud OTP fetch failed: {err}") from err
-        else:
-            if pairing_method == METHOD_MANUAL:
-                raise HomeAssistantError(
-                    "Remote OTP requires an active Atomberg Cloud connection. "
-                    "The SL1 Pro keypad requires pre-provisioned 6-digit OTPs synced from your Atomberg account. "
-                    "Please connect your Atomberg Cloud credentials in integration settings."
-                )
-            raise HomeAssistantError(
-                "Missing Atomberg Cloud credentials. Please re-authenticate the integration."
+        session = async_get_clientsession(self.hass)
+        sync_client = AtombergCloudSync(access_token=auth_token, session=session)
+        try:
+            res = await sync_client.get_dynamic_otp(
+                device_id=self.address,
+                start_time=now_ts,
+                end_time=int(expires_dt.timestamp()),
             )
+            otp = str(res["otp"])
+            _LOGGER.info(
+                "Retrieved active cloud OTP for Atomberg lock %s: %s (valid until %s)",
+                self.address,
+                otp,
+                expires_dt.isoformat(),
+            )
+        except Exception as err:
+            _LOGGER.error("Failed to fetch dynamic OTP from Atomberg Cloud: %s", err)
+            raise HomeAssistantError(f"Cloud OTP fetch failed: {err}") from err
 
         self.last_generated_otp = otp
         self.last_otp_expires_at = expires_dt.isoformat()
