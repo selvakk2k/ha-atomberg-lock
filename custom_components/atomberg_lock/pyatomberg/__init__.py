@@ -1,4 +1,4 @@
-"""pyatomberg: Python library for Atomberg smart door locks and appliances."""
+"""pyatomberg: Python library for Atomberg smart home authentication, discovery, and protocol codecs."""
 
 from pyatomberg.auth.cognito import CognitoOAuthHandler
 from pyatomberg.auth.developer import DeveloperTokenHandler
@@ -15,10 +15,22 @@ from pyatomberg.exceptions import (
 from pyatomberg.fan.device import AtombergFan
 from pyatomberg.fan.udp_listener import AtombergUDPListener
 from pyatomberg.lock.cloud_sync import AtombergCloudSync
-from pyatomberg.lock.device import AtombergLock
-from pyatomberg.lock.dynamic_pin import AtombergDynamicPinClient
+from pyatomberg.lock.dynamic_pin import (
+    AtombergDynamicPinClient,
+    calculate_offline_otp,
+    quantize_expiration_time,
+)
+from pyatomberg.lock.hsj_protocol import (
+    DEFAULT_SLOT_MAPPINGS,
+    LiveEvent,
+    build_hsj_packet,
+    format_ist_time,
+    parse_hsj_packet,
+    parse_live_event,
+    parse_log_record,
+    slot_name,
+)
 from pyatomberg.lock.pairing import (
-    AtombergBLEPairingManager,
     PairingResult,
     extract_keys_from_btsnoop,
 )
@@ -33,12 +45,20 @@ from pyatomberg.models.device import (
 __version__ = "0.1.0"
 
 __all__ = [
-    "AtombergLock",
-    "AtombergBLEPairingManager",
     "PairingResult",
     "extract_keys_from_btsnoop",
     "AtombergCloudSync",
     "AtombergDynamicPinClient",
+    "calculate_offline_otp",
+    "quantize_expiration_time",
+    "LiveEvent",
+    "build_hsj_packet",
+    "parse_hsj_packet",
+    "parse_live_event",
+    "parse_log_record",
+    "slot_name",
+    "format_ist_time",
+    "DEFAULT_SLOT_MAPPINGS",
     "AtombergClient",
     "AtombergFan",
     "AtombergUDPListener",

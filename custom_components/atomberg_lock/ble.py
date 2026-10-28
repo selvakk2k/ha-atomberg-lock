@@ -1,7 +1,7 @@
-"""Atomberg smart door lock (SL1 / SL1 Pro) Bluetooth controller.
+"""Bluetooth Low Energy GATT controller for Atomberg smart door locks.
 
-Based on protocol reverse engineering by dreadedlama (https://github.com/dreadedlama/atomberg-lock)
-under GNU General Public License v3.0.
+Manages connection lifecycle, service discovery, and secure command dispatch
+via Home Assistant's native Bluetooth stack.
 """
 
 from __future__ import annotations
@@ -13,16 +13,12 @@ from typing import Any, Callable
 
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
+from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
-try:
-    from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
-    HAVE_BLEAK_RETRY = True
-except ImportError:
-    HAVE_BLEAK_RETRY = False
+from homeassistant.exceptions import HomeAssistantError
 
-from pyatomberg.crypto import decrypt_aes_ecb
-from pyatomberg.exceptions import AtombergBLEError
-from pyatomberg.lock.hsj_protocol import (
+from .pyatomberg.crypto import decrypt_aes_ecb
+from .pyatomberg.lock.hsj_protocol import (
     DEFAULT_SLOT_MAPPINGS,
     NOTIFY_UUID,
     OP_BATTERY,
@@ -37,42 +33,37 @@ from pyatomberg.lock.hsj_protocol import (
     WRITE_UUID,
     LiveEvent,
     build_hsj_packet,
-    parse_hsj_packet,
     parse_live_event,
     parse_log_record,
 )
-from pyatomberg.models.device import AtombergDeviceModel, DeviceType, LockState
 
 _LOGGER = logging.getLogger(__name__)
 
 COMMAND_TIMEOUT = 10.0
 
 
-class AtombergLock(AtombergDeviceModel):
-    """Represents an Atomberg smart door lock (SL1 / SL1 Pro) controlled over local BLE."""
+class AtombergBLEError(HomeAssistantError):
+    """Exception raised when Bluetooth lock communication fails."""
+
+
+class AtombergLockBLE:
+    """Manages GATT connection, encryption handshakes, and command dispatch for an SL1/SL1 Pro lock."""
 
     def __init__(
         self,
         mac_address: str,
         master_key: bytes,
         salt: bytes,
-        name: str = "Atomberg Smart Lock",
         ble_device: BLEDevice | None = None,
         slot_mappings: dict[int, str] | None = None,
     ) -> None:
-        """Initialize an AtombergLock instance."""
-        super().__init__(
-            device_id=mac_address.upper(),
-            name=name,
-            device_type=DeviceType.LOCK,
-        )
+        """Initialize the BLE lock controller."""
         self.mac_address = mac_address.upper()
         self.master_key = master_key
         self.salt = salt
         self.ble_device = ble_device
         self.slot_mappings = slot_mappings or dict(DEFAULT_SLOT_MAPPINGS)
 
-        self.state = LockState()
         self.client: BleakClient | None = None
         self.session_token: bytes | None = None
         self.session_key: bytes | None = None
@@ -82,7 +73,6 @@ class AtombergLock(AtombergDeviceModel):
         self._expected_len = 0
         self._recv_queue: asyncio.Queue[bytes] = asyncio.Queue()
         self._event_callbacks: list[Callable[[LiveEvent], None]] = []
-        self._state_callbacks: list[Callable[["AtombergLock"], None]] = []
 
     @property
     def is_connected(self) -> bool:
@@ -93,11 +83,6 @@ class AtombergLock(AtombergDeviceModel):
         """Register a callback for decoded live lock events."""
         if callback not in self._event_callbacks:
             self._event_callbacks.append(callback)
-
-    def register_state_callback(self, callback: Callable[["AtombergLock"], None]) -> None:
-        """Register a callback for state changes."""
-        if callback not in self._state_callbacks:
-            self._state_callbacks.append(callback)
 
     def _clear_buffers(self) -> None:
         """Reset internal frame buffers and receive queue."""
@@ -110,7 +95,7 @@ class AtombergLock(AtombergDeviceModel):
                 break
 
     def _notification_handler(self, sender: Any, data: bytearray) -> None:
-        """Handle incoming GATT notifications from 0xFFF2."""
+        """Handle incoming GATT notifications from lock."""
         raw = bytes(data)
         if raw.startswith(b"HSJ") and len(raw) >= 5:
             self._expected_len = int.from_bytes(raw[3:5], byteorder="big")
@@ -129,7 +114,11 @@ class AtombergLock(AtombergDeviceModel):
                     if len(dec) >= 7 and ((dec[5] << 8) | dec[6]) == OP_LIVE_EVENT:
                         live_event = parse_live_event(dec, self.slot_mappings)
                         if live_event:
-                            self._apply_live_event(live_event)
+                            for cb in self._event_callbacks:
+                                try:
+                                    cb(live_event)
+                                except Exception as err:
+                                    _LOGGER.exception("Error in lock event callback: %s", err)
                 except Exception as err:
                     _LOGGER.debug("Error decoding live event: %s", err)
 
@@ -137,38 +126,8 @@ class AtombergLock(AtombergDeviceModel):
             self._rx_buffer = bytearray(self._rx_buffer[self._expected_len :])
             self._expected_len = 0
 
-    def _apply_live_event(self, event: LiveEvent) -> None:
-        """Update lock state from a live event."""
-        if event.is_unlocked:
-            self.state.is_locked = False
-            self.state.last_unlock_method = event.credential_type
-            self.state.last_unlock_user_id = event.slot_id
-            self.state.last_unlock_timestamp = event.raw_timestamp
-
-        if event.is_auto_lock:
-            self.state.is_locked = True
-            self.state.auto_lock_engaged = True
-
-        if event.is_tamper:
-            self.state.tamper_alert = True
-
-        if event.battery is not None and 0 <= event.battery <= 100:
-            self.state.battery_level = event.battery
-
-        for ecb in self._event_callbacks:
-            try:
-                ecb(event)
-            except Exception as err:
-                _LOGGER.exception("Error in lock event callback: %s", err)
-
-        for scb in self._state_callbacks:
-            try:
-                scb(self)
-            except Exception as err:
-                _LOGGER.exception("Error in lock state callback: %s", err)
-
     async def _send_frame(self, payload: bytes, key: bytes, frame_seq: int = 2) -> None:
-        """Chunk packet into 20-byte MTUs and write to 0xFFF1."""
+        """Chunk packet into 20-byte MTUs and write to GATT characteristic."""
         if not self.client or not self.client.is_connected:
             raise AtombergBLEError("Cannot write frame: lock is not connected")
 
@@ -211,11 +170,11 @@ class AtombergLock(AtombergDeviceModel):
         )
 
     async def connect(self, timeout: float = 15.0) -> None:
-        """Connect to lock over BLE and start notifications."""
+        """Connect to lock over BLE using Home Assistant bluetooth stack and start notifications."""
         target: str | BLEDevice = self.ble_device if self.ble_device else self.mac_address
 
         try:
-            if HAVE_BLEAK_RETRY and isinstance(target, BLEDevice):
+            if isinstance(target, BLEDevice):
                 self.client = await establish_connection(
                     BleakClientWithServiceCache,
                     target,
@@ -230,24 +189,21 @@ class AtombergLock(AtombergDeviceModel):
             self._clear_buffers()
             await self.client.start_notify(NOTIFY_UUID, self._notification_handler)
             await asyncio.sleep(0.5)
-            self.is_online = True
             _LOGGER.debug("Connected to Atomberg lock: %s", self.mac_address)
         except Exception as err:
-            self.is_online = False
             raise AtombergBLEError(f"Failed to connect to lock {self.mac_address}: {err}") from err
 
     async def disconnect(self) -> None:
-        """Disconnect from lock."""
+        """Disconnect from lock and release session state."""
         if self.client:
             try:
                 if self.client.is_connected:
                     await self.client.stop_notify(NOTIFY_UUID)
                     await self.client.disconnect()
             except Exception as err:
-                _LOGGER.debug("Error disconnecting: %s", err)
+                _LOGGER.debug("Error disconnecting from lock: %s", err)
             finally:
                 self.client = None
-                self.is_online = False
                 self.session_token = None
                 self.session_key = None
                 self._clear_buffers()
@@ -292,7 +248,7 @@ class AtombergLock(AtombergDeviceModel):
         _LOGGER.debug("Successfully authenticated with lock: %s", self.mac_address)
 
     async def unlock(self) -> int:
-        """Unlock the smart door lock."""
+        """Unlock the smart door lock latch."""
         if not self.session_key or not self.session_token:
             await self.authenticate()
 
@@ -337,9 +293,6 @@ class AtombergLock(AtombergDeviceModel):
         if not acknowledged:
             raise AtombergBLEError(f"Unlock command rejected by lock: {unlock_dec.hex(' ')}")
 
-        self.state.is_locked = False
-        self.state.last_unlock_method = "Atomberg App (BLE)"
-        self.state.last_unlock_timestamp = time.time()
         return int.from_bytes(ts_bytes, byteorder="big")
 
     async def get_battery(self) -> int | None:
@@ -380,7 +333,6 @@ class AtombergLock(AtombergDeviceModel):
             battery = resp_dec[28]
 
         if battery is not None and 0 <= battery <= 100:
-            self.state.battery_level = battery
             return battery
         return None
 

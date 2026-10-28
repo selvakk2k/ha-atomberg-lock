@@ -9,7 +9,6 @@ import aiohttp
 
 from pyatomberg.const import SERVER_API_BASE
 from pyatomberg.exceptions import AtombergAuthError, AtombergConnectionError
-from pyatomberg.lock.device import AtombergLock
 from pyatomberg.lock.pairing import PairingResult
 
 _LOGGER = logging.getLogger(__name__)

@@ -19,8 +19,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from pyatomberg.lock.device import AtombergLock
-from pyatomberg.lock.hsj_protocol import LiveEvent, format_ist_time
+from .ble import AtombergLockBLE
+from .pyatomberg.lock.hsj_protocol import LiveEvent, format_ist_time
 
 from .const import AUTO_LOCK_SECONDS, CONF_MAC, CONF_MASTER_KEY, CONF_SALT, CONF_SLOT_MAPPINGS, DOMAIN
 
@@ -73,7 +73,7 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.is_available = True
         self.discovered_slots: dict[int, str] = {14: "Fingerprint"}
 
-        self._lock_device: AtombergLock | None = None
+        self._lock_device: AtombergLockBLE | None = None
         self._busy = asyncio.Lock()
         self._relock_task: asyncio.Task[None] | None = None
         self._cancel_bluetooth: Any = None
@@ -122,11 +122,11 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         return dev
 
-    def _ensure_lock_instance(self) -> AtombergLock:
-        """Instantiate or update AtombergLock with latest BLE device reference."""
+    def _ensure_lock_instance(self) -> AtombergLockBLE:
+        """Instantiate or update AtombergLockBLE with latest BLE device reference."""
         ble_dev = self._get_ble_device()
         if self._lock_device is None:
-            self._lock_device = AtombergLock(
+            self._lock_device = AtombergLockBLE(
                 mac_address=self.address,
                 master_key=self.master_key,
                 salt=self.lock_salt,
@@ -324,7 +324,7 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_generate_otp(self, duration_hours: float = 0.5) -> dict[str, Any]:
         """Generate an offline guest OTP for the lock keypad."""
-        from pyatomberg.lock.dynamic_pin import calculate_offline_otp, quantize_expiration_time
+        from .pyatomberg.lock.dynamic_pin import calculate_offline_otp, quantize_expiration_time
 
         auth_code = str(
             self.entry.data.get("general_auth_code")
