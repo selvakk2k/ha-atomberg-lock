@@ -122,6 +122,23 @@ class AtombergLastEventSensor(AtombergLockBaseEntity, SensorEntity):
             return None
         return self.coordinator.last_event.event
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return full unlock history and event attributes."""
+        attrs: dict[str, Any] = {
+            "unlock_history": self.coordinator.unlock_history,
+            "history_count": len(self.coordinator.unlock_history),
+        }
+        if self.coordinator.last_event:
+            attrs.update({
+                "credential_type": self.coordinator.last_event.credential_type,
+                "slot_id": self.coordinator.last_event.slot_id,
+                "pin_code": self.coordinator.last_event.pin_code,
+                "timestamp": self.coordinator.last_event.timestamp,
+                "raw_timestamp": self.coordinator.last_event.raw_timestamp,
+            })
+        return attrs
+
 
 class AtombergLastGeneratedOtpSensor(AtombergLockBaseEntity, SensorEntity):
     """Sensor reporting the last generated offline OTP PIN."""

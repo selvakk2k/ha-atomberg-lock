@@ -84,9 +84,17 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._log_store = Store[list[dict[str, Any]]](hass, 1, f"{DOMAIN}_{entry.entry_id}_logs")
         self._otp_store = Store[list[dict[str, Any]]](hass, 1, f"{DOMAIN}_{entry.entry_id}_otps")
         self.otp_history: list[dict[str, Any]] = []
+        self.unlock_history: list[dict[str, Any]] = []
 
     async def async_start(self) -> None:
         """Start listening for live Bluetooth advertisements via ESPHome Bluetooth Proxies."""
+        try:
+            stored_logs = await self._log_store.async_load()
+            if stored_logs and isinstance(stored_logs, list):
+                self.unlock_history = stored_logs
+        except Exception as err:
+            _LOGGER.debug("Could not load stored unlock history: %s", err)
+
         try:
             stored_otps = await self._otp_store.async_load()
             if stored_otps and isinstance(stored_otps, list):
@@ -199,6 +207,20 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _relock_coro(), f"{DOMAIN}_auto_relock_{self.address}"
         )
 
+    def _merge_unlock_records(self, new_records: list[dict[str, Any]]) -> None:
+        """Merge unlock records, deduplicating by raw_timestamp."""
+        existing_ts = {r.get("raw_timestamp") for r in self.unlock_history if r.get("raw_timestamp")}
+        for rec in new_records:
+            ts = rec.get("raw_timestamp")
+            if ts and ts not in existing_ts:
+                self.unlock_history.append(rec)
+                existing_ts.add(ts)
+            elif not ts:
+                self.unlock_history.append(rec)
+        self.unlock_history.sort(key=lambda x: x.get("raw_timestamp", 0), reverse=True)
+        if len(self.unlock_history) > 50:
+            self.unlock_history = self.unlock_history[:50]
+
     def _build_data_dict(self) -> dict[str, Any]:
         """Build summary data dictionary for listeners."""
         return {
@@ -214,6 +236,8 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "last_otp_expires_at": self.last_otp_expires_at,
             "last_otp_valid_until_ts": self.last_otp_valid_until_ts,
             "last_otp_duration_hours": self.last_otp_duration_hours,
+            "unlock_history": self.unlock_history,
+            "unlock_count": len(self.unlock_history),
             "active_otps": [
                 o for o in self.otp_history
                 if o.get("valid_until_timestamp", 0) > int(time.time())
@@ -295,15 +319,18 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await lock.disconnect()
 
     async def async_sync_device(self) -> None:
-        """Manually trigger full synchronization of lock battery and event logs."""
+        """Synchronize lock battery and event logs via BLE and/or Cloud Firestore."""
         lock = self._ensure_lock_instance()
+        ble_success = False
 
+        # 1. Attempt Bluetooth Low Energy sync
         async with self._busy:
             try:
-                await lock.connect(timeout=15.0)
+                await lock.connect(timeout=10.0)
                 await lock.authenticate()
+                ble_success = True
 
-                # 1. Query Battery
+                # Query Battery
                 try:
                     battery = await lock.get_battery()
                     if battery is not None:
@@ -311,50 +338,75 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 except Exception as b_err:
                     _LOGGER.debug("Could not poll battery during sync: %s", b_err)
 
-                # 2. Fetch Flash Event Logs
+                # Fetch Flash Event Logs
                 try:
                     records = await lock.fetch_incremental_logs(start_offset=0)
                     if records:
-                        # Find the most recent unlock event in the logs
-                        latest_unlock = None
-                        for rec in reversed(records):
-                            evt = rec.get("event", "")
-                            cred = rec.get("credential_type", "")
-                            slot = rec.get("slot", 0)
-                            if "Unlocked" in evt or cred in ("Fingerprint", "NFC Card", "PIN Code", "Atomberg App"):
-                                if slot not in (0xFFFF, 65535):
-                                    latest_unlock = rec
-                                    break
-
+                        self._merge_unlock_records(records)
                         latest = records[-1]
                         now_ts = int(time.time())
-
-                        # For user and credential method, use the actual unlock record
-                        target_rec = latest_unlock if latest_unlock else latest
-                        slot_id = target_rec.get("slot", 0)
-                        if slot_id in (0xFFFF, 65535):
-                            slot_id = 0
-
                         self.last_event = LiveEvent(
                             battery=latest.get("battery", self.battery_level or 100),
                             event=latest.get("event", "Hardware Event"),
-                            credential_type=target_rec.get("credential_type", "Physical Credential"),
-                            slot_id=slot_id,
-                            pin_code=target_rec.get("pin", ""),
-                            timestamp=target_rec.get("datetime", format_ist_time(now_ts)),
-                            raw_timestamp=now_ts,
+                            credential_type=latest.get("credential_type", "Physical Credential"),
+                            slot_id=latest.get("slot", 0),
+                            pin_code=latest.get("pin", ""),
+                            timestamp=latest.get("datetime", format_ist_time(now_ts)),
+                            raw_timestamp=latest.get("raw_timestamp", now_ts),
                             is_unlocked="Unlocked" in latest.get("event", ""),
                             is_auto_lock="Auto-Lock" in latest.get("event", ""),
                             is_tamper=False,
                         )
                 except Exception as l_err:
-                    _LOGGER.debug("Could not fetch logs during sync: %s", l_err)
+                    _LOGGER.debug("Could not fetch logs via BLE during sync: %s", l_err)
 
-                self.async_set_updated_data(self._build_data_dict())
-            except Exception as err:
-                raise HomeAssistantError(f"Failed to sync Atomberg lock: {err}") from err
+            except Exception as b_err:
+                _LOGGER.debug("BLE sync unavailable (%s), checking cloud logs...", b_err)
             finally:
-                await lock.disconnect()
+                if ble_success:
+                    await lock.disconnect()
+
+        # 2. Query Cloud Firestore history (merges events uploaded by mobile app)
+        auth_token = self.entry.options.get("auth_token") or self.entry.data.get("auth_token")
+        if auth_token:
+            try:
+                from homeassistant.helpers.aiohttp_client import async_get_clientsession
+                from pyatomberg.lock.cloud_sync import AtombergCloudSync
+
+                session = async_get_clientsession(self.hass)
+                sync_client = AtombergCloudSync(access_token=auth_token, session=session)
+                cloud_records = await sync_client.fetch_cloud_history(
+                    device_id=self.address,
+                    slot_mappings=self.slot_mappings,
+                )
+                if cloud_records:
+                    self._merge_unlock_records(cloud_records)
+                    # If we don't have a live BLE event yet, populate from latest cloud record
+                    if not ble_success and self.unlock_history and not self.last_event:
+                        latest_cloud = self.unlock_history[0]
+                        now_ts = latest_cloud.get("raw_timestamp", int(time.time()))
+                        self.last_event = LiveEvent(
+                            battery=self.battery_level or 100,
+                            event=latest_cloud.get("event", "Hardware Event"),
+                            credential_type=latest_cloud.get("credential_type", "Physical Credential"),
+                            slot_id=latest_cloud.get("slot", 0),
+                            pin_code="",
+                            timestamp=latest_cloud.get("datetime", format_ist_time(now_ts)),
+                            raw_timestamp=now_ts,
+                            is_unlocked="Unlocked" in latest_cloud.get("event", ""),
+                            is_auto_lock=False,
+                            is_tamper=False,
+                        )
+            except Exception as c_err:
+                _LOGGER.debug("Could not fetch cloud logs: %s", c_err)
+
+        # Save merged history
+        try:
+            await self._log_store.async_save(self.unlock_history)
+        except Exception as s_err:
+            _LOGGER.debug("Could not save unlock history: %s", s_err)
+
+        self.async_set_updated_data(self._build_data_dict())
 
     async def async_generate_otp(self, duration_hours: float = 0.5) -> dict[str, Any]:
         """Generate a dynamic OTP for the lock keypad."""

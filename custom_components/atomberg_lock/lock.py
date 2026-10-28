@@ -51,17 +51,21 @@ class AtombergLockEntity(AtombergLockBaseEntity, LockEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return hardware event metadata."""
-        event = self.coordinator.last_event
-        if not event:
-            return {}
-        return {
-            "last_event": event.event,
-            "credential_type": event.credential_type,
-            "slot_id": event.slot_id,
-            "pin_code": event.pin_code,
-            "last_event_time": event.timestamp,
+        """Return hardware event metadata and unlock history."""
+        attrs: dict[str, Any] = {
+            "unlock_history": self.coordinator.unlock_history,
+            "unlock_count": len(self.coordinator.unlock_history),
         }
+        event = self.coordinator.last_event
+        if event:
+            attrs.update({
+                "last_event": event.event,
+                "credential_type": event.credential_type,
+                "slot_id": event.slot_id,
+                "pin_code": event.pin_code,
+                "last_event_time": event.timestamp,
+            })
+        return attrs
 
     async def async_unlock(self, **kwargs: Any) -> None:
         """Unlock the smart door lock."""
