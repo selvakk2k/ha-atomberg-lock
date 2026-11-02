@@ -45,15 +45,23 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._oauth_handler: CognitoOAuthHandler | None = None
         self._pending_verifier: str | None = None
         self._auth_url: str | None = None
+        self._is_local_only: bool = False
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Choose between Cloud Account Sync or Manual Key Entry."""
+        """Choose between Cloud Connected, Cloud-Assisted Local, or Manual Key Entry."""
         return self.async_show_menu(
             step_id="user",
-            menu_options=[METHOD_CLOUD, METHOD_MANUAL],
+            menu_options=[METHOD_CLOUD, "cloud_assisted_local", METHOD_MANUAL],
         )
+
+    async def async_step_cloud_assisted_local(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Authenticate with cloud to extract keys, then drop cloud tokens and configure local only."""
+        self._is_local_only = True
+        return await self.async_step_cloud(user_input)
 
     async def async_step_cloud(
         self, user_input: dict[str, Any] | None = None
@@ -71,6 +79,7 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             raw_input = user_input.get("auth_code", "").strip()
             auth_token = raw_input
+            refresh_token = ""
 
             # Check if user passed redirected URL or authorization code
             if "code=" in raw_input or ("-" in raw_input and len(raw_input) < 60):
@@ -93,6 +102,7 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         redirect_uri=COGNITO_REDIRECT_URI,
                     )
                     auth_token = tokens.get("access_token") or tokens.get("id_token", "")
+                    refresh_token = tokens.get("refresh_token", "")
                 except Exception as err:
                     _LOGGER.exception("Token exchange failed: %s", err)
                     errors["base"] = "cloud_sync_failed"
@@ -108,10 +118,21 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         await self.async_set_unique_id(first_lock.mac_address)
                         self._abort_if_unique_id_configured()
 
-                        title = first_lock.name or f"Atomberg Lock ({first_lock.mac_address})"
-                        return self.async_create_entry(
-                            title=title,
-                            data={
+                        if self._is_local_only:
+                            title = first_lock.name or f"Atomberg Lock ({first_lock.mac_address})"
+                            entry_data = {
+                                CONF_MAC: first_lock.mac_address,
+                                CONF_MASTER_KEY: first_lock.master_key_hex,
+                                CONF_SALT: first_lock.salt_hex,
+                                CONF_PAIRING_METHOD: METHOD_MANUAL,
+                                "name": first_lock.name or "Atomberg Smart Lock",
+                                "model": first_lock.model or "smart_lock",
+                                "temp_auth_code": first_lock.temp_auth_code or "",
+                                "general_auth_code": first_lock.general_auth_code or "",
+                            }
+                        else:
+                            title = first_lock.name or f"Atomberg Lock ({first_lock.mac_address})"
+                            entry_data = {
                                 CONF_MAC: first_lock.mac_address,
                                 CONF_MASTER_KEY: first_lock.master_key_hex,
                                 CONF_SALT: first_lock.salt_hex,
@@ -119,9 +140,14 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 "name": first_lock.name or "Atomberg Smart Lock",
                                 "model": first_lock.model or "smart_lock",
                                 "auth_token": auth_token,
+                                "refresh_token": refresh_token,
                                 "temp_auth_code": first_lock.temp_auth_code or "",
                                 "general_auth_code": first_lock.general_auth_code or "",
-                            },
+                            }
+
+                        return self.async_create_entry(
+                            title=title,
+                            data=entry_data,
                         )
                 except Exception as err:
                     _LOGGER.exception("Cloud sync failed: %s", err)
@@ -131,7 +157,7 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required("auth_code"): str,
         })
         return self.async_show_form(
-            step_id="cloud",
+            step_id="cloud_assisted_local" if self._is_local_only else "cloud",
             data_schema=schema,
             errors=errors,
             description_placeholders={"auth_url": self._auth_url or ""},
@@ -332,6 +358,7 @@ class AtombergLockOptionsFlow(config_entries.OptionsFlow):
         auto_lock = self._config_entry.options.get("auto_lock_seconds", AUTO_LOCK_SECONDS)
         scan_interval = self._config_entry.options.get("scan_interval_minutes", 30)
         curr_token = self._config_entry.options.get("auth_token") or self._config_entry.data.get("auth_token") or ""
+        curr_refresh = self._config_entry.options.get("refresh_token") or self._config_entry.data.get("refresh_token") or ""
 
         schema = vol.Schema({
             vol.Optional("auto_lock_seconds", default=auto_lock): selector.NumberSelector(
@@ -353,6 +380,12 @@ class AtombergLockOptionsFlow(config_entries.OptionsFlow):
                 )
             ),
             vol.Optional("auth_token", default=curr_token): selector.TextSelector(
+                selector.TextSelectorConfig(
+                    type=selector.TextSelectorType.PASSWORD,
+                    autocomplete="off",
+                )
+            ),
+            vol.Optional("refresh_token", default=curr_refresh): selector.TextSelector(
                 selector.TextSelectorConfig(
                     type=selector.TextSelectorType.PASSWORD,
                     autocomplete="off",

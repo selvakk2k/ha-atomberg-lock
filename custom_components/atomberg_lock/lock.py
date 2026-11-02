@@ -54,7 +54,13 @@ class AtombergLockEntity(AtombergLockBaseEntity, LockEntity):
         """Return hardware event metadata and unlock history."""
         attrs: dict[str, Any] = {
             "is_cloud_connected": self.coordinator.is_cloud_connected,
-            "unlock_history": self.coordinator.unlock_history,
+            "is_wifi_lock": self.coordinator.is_wifi_lock,
+            "last_sync_timestamp": self.coordinator.last_sync_timestamp,
+            "last_sync_ble_status": self.coordinator.last_sync_ble_status,
+            "last_sync_ble_count": self.coordinator.last_sync_ble_count,
+            "last_sync_cloud_status": self.coordinator.last_sync_cloud_status,
+            "last_sync_cloud_count": self.coordinator.last_sync_cloud_count,
+            "unlock_history": list(self.coordinator.unlock_history),
             "unlock_count": len(self.coordinator.unlock_history),
         }
         event = self.coordinator.last_event

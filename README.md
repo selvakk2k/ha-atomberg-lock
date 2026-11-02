@@ -4,7 +4,10 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![HACS: Custom](https://img.shields.io/badge/HACS-Custom%20Integration-orange.svg)](https://hacs.xyz)
 
-Custom Home Assistant integration for local Bluetooth Low Energy (BLE) control and monitoring of **Atomberg Smart Door Locks** (SL1, SL1 Pro).
+Reference custom Home Assistant integration for local Bluetooth Low Energy (BLE) control and monitoring of **Atomberg Smart Door Locks** (SL1, SL1 Pro).
+
+> [!NOTE]
+> **Reference Demo Notice**: This integration serves as a working reference demo of the underlying [`atomberg-py`](https://github.com/selvakk2k/atomberg-py) Python library. Its primary purpose is to validate hardware BLE lock control, encryption handshakes, credential parsing, and event logging. Ideally, these capabilities should be merged upstream and adopted into the community integration maintained by **[@dreadedlama](https://github.com/dreadedlama/atomberg-lock)** for unified Atomberg device support.
 
 Provides direct offline locking, unlocking, battery reporting, and physical credential recognition (fingerprints, keycards, PINs) via Home Assistant's native Bluetooth stack or ESPHome Bluetooth Proxies.
 
@@ -21,7 +24,6 @@ Provides direct offline locking, unlocking, battery reporting, and physical cred
 - [Configuration & Onboarding](#configuration--onboarding)
 - [Entities Provided](#entities-provided)
 - [Managing Credential Names](#managing-credential-names)
-- [Remote & Timed OTP Generation](#remote--timed-otp-generation)
 - [Troubleshooting](#troubleshooting)
 - [Credits & License](#credits--license)
 
@@ -29,13 +31,13 @@ Provides direct offline locking, unlocking, battery reporting, and physical cred
 
 ## Features
 
-- **Direct Offline BLE Control**: High-speed, local AES-128 encrypted unlocking with automatic relock tracking.
+- **Direct Offline BLE Control**: Local AES-128 encrypted unlocking with automatic relock tracking.
 - **ESPHome Proxy Support**: Operates smoothly across any ESPHome Bluetooth Proxy in your home.
 - **Universal Cloud Account Sync**: Seamlessly imports existing lock encryption keys and credentials from your Atomberg account via AWS Cognito SSO.
 - **Credential Identification**: Hardware audit log parser decodes which user or slot unlocked the door (fingerprint, NFC keycard, PIN, or mobile app).
 - **Interactive Options Wizard**: 2-step setup to assign friendly names to discovered fingerprint and card slots.
-- **Remote & Timed OTP Actions**: Generates single-use remote OTPs and expirable timed guest PINs directly from Home Assistant.
 - **Battery Reporting**: Tracks battery percentage with periodic queries and refresh buttons.
+- **History Synchronization**: Pulls unlock events and flash logs on demand via the sync button.
 
 ---
 
@@ -92,7 +94,7 @@ Provides direct offline locking, unlocking, battery reporting, and physical cred
      - Copy the redirected URL (`https://app.atomberg-iot.com/?code=...`) from your address bar and paste it into the dialog.
      - Home Assistant automatically retrieves your lock's Bluetooth MAC address, Master Key, and Salt.
    - **Manual Key Entry**:
-     - Advanced users can enter their 12-digit MAC address, 16-byte Master Key, and 4-byte Salt directly.
+     - Direct offline entry of your 12-digit MAC address, 16-byte Master Key, and 4-byte Salt.
 
 ---
 
@@ -104,7 +106,7 @@ Provides direct offline locking, unlocking, battery reporting, and physical cred
 | `sensor.atomberg_sl1_pro_battery` | Sensor | Battery level percentage (0–100%). |
 | `sensor.atomberg_sl1_pro_last_user` | Sensor | Displays friendly name of last enrolled slot or user. |
 | `sensor.atomberg_sl1_pro_last_unlock_method` | Sensor | Credential type used (Fingerprint, NFC Card, PIN, App). |
-| `sensor.atomberg_sl1_pro_last_event_time` | Sensor | Timestamp of the most recent lock event. |
+| `sensor.atomberg_sl1_pro_last_event` | Sensor | Description of the most recent hardware event and history attributes. |
 | `button.atomberg_sl1_pro_sync_status` | Button | Queries battery level and synchronizes flash audit logs. |
 
 ---
@@ -123,15 +125,6 @@ The `sensor.*_last_user` entity will immediately display the assigned name whene
 
 ---
 
-## Remote & Timed OTP Generation
-
-Atomberg locks support offline algorithmic OTP keypad PINs that guests can enter directly on the door lock:
-
-- **Remote OTP (One-Time Use)**: Valid for 15 minutes. It works strictly once and is spent immediately upon unlocking.
-- **Timed OTP (Time-Bounded)**: Valid for a custom duration (e.g. 4 hours). Expire automatically if not used before the window closes.
-
----
-
 ## Troubleshooting
 
 - **Lock shows unavailable**: Locks enter low-power sleep when idle. The integration maintains availability state and wakes the device upon command dispatch. Ensure your Bluetooth adapter or ESPHome proxy has clear signal (RSSI > -85 dBm).
@@ -141,6 +134,6 @@ Atomberg locks support offline algorithmic OTP keypad PINs that guests can enter
 
 ## Credits & License
 
-- Based on protocol reverse-engineering by **[dreadedlama/atomberg-lock](https://github.com/dreadedlama/atomberg-lock)**.
-- Companion Python library: **[`pyatomberg`](https://github.com/selvakk2k/pyatomberg)**.
+- Core reverse-engineering and foundation: **[@dreadedlama](https://github.com/dreadedlama/atomberg-lock)**.
+- Library and integration reference implementation: **[`atomberg-py`](https://github.com/selvakk2k/atomberg-py)**.
 - Licensed under the **GNU General Public License v3.0 (GPL-3.0)**. See [LICENSE](LICENSE) for details.

@@ -45,32 +45,56 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
-    async def async_handle_generate_otp(call: ServiceCall) -> ServiceResponse:
-        """Handle generate OTP service call."""
+    def _get_coordinator_from_call(call: ServiceCall) -> AtombergLockCoordinator:
+        """Resolve coordinator from service call target entity_id or device_id."""
         coordinator: AtombergLockCoordinator | None = None
-        device_id = call.data.get("device_id")
-        if device_id:
-            dev_reg = dr.async_get(hass)
-            device = dev_reg.async_get(device_id)
-            if device:
-                for c_entry_id in device.config_entries:
-                    if c_entry_id in hass.data.get(DOMAIN, {}):
-                        coordinator = hass.data[DOMAIN][c_entry_id]
-                        break
+        entity_id = call.data.get("entity_id")
+        if entity_id:
+            from homeassistant.helpers import entity_registry as er
+            ent_reg = er.async_get(hass)
+            if ent_entry := ent_reg.async_get(entity_id):
+                if ent_entry.config_entry_id in hass.data.get(DOMAIN, {}):
+                    coordinator = hass.data[DOMAIN][ent_entry.config_entry_id]
+
+        if coordinator is None:
+            device_id = call.data.get("device_id")
+            if device_id:
+                dev_reg = dr.async_get(hass)
+                device = dev_reg.async_get(device_id)
+                if device:
+                    for c_entry_id in device.config_entries:
+                        if c_entry_id in hass.data.get(DOMAIN, {}):
+                            coordinator = hass.data[DOMAIN][c_entry_id]
+                            break
+
         if coordinator is None and hass.data.get(DOMAIN):
             coordinator = next(iter(hass.data[DOMAIN].values()))
 
         if coordinator is None:
-            raise HomeAssistantError("No Atomberg lock available to generate OTP.")
+            raise HomeAssistantError("No Atomberg lock available.")
 
-        duration_hours = float(call.data.get("duration_hours", 0.5))
-        return await coordinator.async_generate_otp(duration_hours=duration_hours)
+        return coordinator
 
-    if not hass.services.has_service(DOMAIN, "generate_otp"):
+    async def async_handle_sync(call: ServiceCall) -> ServiceResponse:
+        """Handle sync logs service call and return updated history."""
+        coordinator = _get_coordinator_from_call(call)
+        await coordinator.async_sync_device()
+        return {
+            "success": True,
+            "unlock_history": list(coordinator.unlock_history),
+            "unlock_count": len(coordinator.unlock_history),
+            "ble_status": coordinator.last_sync_ble_status,
+            "cloud_status": coordinator.last_sync_cloud_status,
+            "ble_new_count": coordinator.last_sync_ble_count,
+            "cloud_new_count": coordinator.last_sync_cloud_count,
+            "last_sync_timestamp": coordinator.last_sync_timestamp,
+        }
+
+    if not hass.services.has_service(DOMAIN, "sync"):
         hass.services.async_register(
             DOMAIN,
-            "generate_otp",
-            async_handle_generate_otp,
+            "sync",
+            async_handle_sync,
             supports_response=SupportsResponse.OPTIONAL,
         )
 

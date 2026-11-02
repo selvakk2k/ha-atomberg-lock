@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -37,15 +36,6 @@ async def async_setup_entry(
         AtombergLastUserSensor(coordinator),
         AtombergLastEventSensor(coordinator),
     ]
-    if coordinator.is_cloud_connected:
-        entities.append(AtombergLastGeneratedOtpSensor(coordinator))
-    else:
-        # Prune stale last_generated_otp sensor if it exists in the entity registry
-        from homeassistant.helpers import entity_registry as er
-        ent_reg = er.async_get(hass)
-        unique_id = f"{coordinator.address.lower()}_last_generated_otp"
-        if entity_id := ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id):
-            ent_reg.async_remove(entity_id)
     async_add_entities(entities)
 
 
@@ -140,7 +130,8 @@ class AtombergLastEventSensor(AtombergLockBaseEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return full unlock history and event attributes."""
         attrs: dict[str, Any] = {
-            "unlock_history": self.coordinator.unlock_history,
+            "unlock_history": list(self.coordinator.unlock_history),
+            "unlock_count": len(self.coordinator.unlock_history),
             "history_count": len(self.coordinator.unlock_history),
         }
         if self.coordinator.last_event:
@@ -151,40 +142,4 @@ class AtombergLastEventSensor(AtombergLockBaseEntity, SensorEntity):
                 "timestamp": self.coordinator.last_event.timestamp,
                 "raw_timestamp": self.coordinator.last_event.raw_timestamp,
             })
-        return attrs
-
-
-class AtombergLastGeneratedOtpSensor(AtombergLockBaseEntity, SensorEntity):
-    """Sensor reporting the last generated offline OTP PIN."""
-
-    _attr_icon = "mdi:shield-key"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    def __init__(self, coordinator: AtombergLockCoordinator) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, key="last_generated_otp")
-        self._attr_name = "Last Generated OTP"
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the last generated OTP PIN."""
-        return self.coordinator.last_generated_otp
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
-        attrs: dict[str, Any] = {}
-        if self.coordinator.last_otp_expires_at:
-            attrs["expires_at"] = self.coordinator.last_otp_expires_at
-        if self.coordinator.last_otp_valid_until_ts:
-            attrs["valid_until_timestamp"] = self.coordinator.last_otp_valid_until_ts
-        if self.coordinator.last_otp_duration_hours is not None:
-            attrs["duration_hours"] = self.coordinator.last_otp_duration_hours
-
-        now_ts = int(time.time())
-        attrs["active_otps"] = [
-            o for o in self.coordinator.otp_history
-            if o.get("valid_until_timestamp", 0) > now_ts
-        ]
-        attrs["otp_history"] = list(reversed(self.coordinator.otp_history))[:15]
         return attrs

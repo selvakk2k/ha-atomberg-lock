@@ -12,3 +12,11 @@ Thumbs.db
 # Local testing
 .pytest_cache/
 .coverage
+
+# Archived research & experimental code
+archive/
+
+# Secrets & local env
+*.local.json
+live_tokens.json
+*oauth*.json

@@ -40,6 +40,7 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.entry = entry
         self.address = str(entry.data[CONF_MAC]).upper()
+        self.model: str = str(entry.data.get("model") or entry.options.get("model") or "SL1 Pro")
 
         raw_key = entry.data[CONF_MASTER_KEY]
         if isinstance(raw_key, str):
@@ -64,6 +65,8 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.slot_mappings: dict[int, str] = {
             int(k): str(v) for k, v in raw_mappings.items() if str(k).isdigit()
         }
+        self.general_auth_code: str = str(entry.data.get("general_auth_code") or entry.options.get("general_auth_code") or "")
+        self.temp_auth_code: str = str(entry.data.get("temp_auth_code") or entry.options.get("temp_auth_code") or "")
 
         # Runtime states - persistent availability for battery BLE devices
         self.is_locked = True
@@ -72,18 +75,19 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_event: LiveEvent | None = None
         self.is_available = True
         self.discovered_slots: dict[int, str] = {14: "Fingerprint"}
-        self.last_generated_otp: str | None = None
-        self.last_otp_expires_at: str | None = None
-        self.last_otp_valid_until_ts: int | None = None
-        self.last_otp_duration_hours: float | None = None
+
+        # Sync reporting diagnostics
+        self.last_sync_timestamp: str | None = None
+        self.last_sync_ble_status: str = "Idle"
+        self.last_sync_ble_count: int = 0
+        self.last_sync_cloud_status: str = "Idle"
+        self.last_sync_cloud_count: int = 0
 
         self._lock_device: AtombergLockBLE | None = None
         self._busy = asyncio.Lock()
         self._relock_task: asyncio.Task[None] | None = None
         self._cancel_bluetooth: Any = None
         self._log_store = Store[list[dict[str, Any]]](hass, 1, f"{DOMAIN}_{entry.entry_id}_logs")
-        self._otp_store = Store[list[dict[str, Any]]](hass, 1, f"{DOMAIN}_{entry.entry_id}_otps")
-        self.otp_history: list[dict[str, Any]] = []
         self.unlock_history: list[dict[str, Any]] = []
 
     async def async_start(self) -> None:
@@ -110,25 +114,6 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.async_set_updated_data(self._build_data_dict())
         except Exception as err:
             _LOGGER.debug("Could not load stored unlock history: %s", err)
-
-        try:
-            stored_otps = await self._otp_store.async_load()
-            if stored_otps and isinstance(stored_otps, list):
-                self.otp_history = stored_otps
-                now_ts = int(time.time())
-                active = [
-                    o for o in self.otp_history
-                    if o.get("valid_until_timestamp", 0) > now_ts
-                ]
-                if active:
-                    last = active[-1]
-                    self.last_generated_otp = last.get("otp")
-                    self.last_otp_expires_at = last.get("expires_at")
-                    self.last_otp_valid_until_ts = last.get("valid_until_timestamp")
-                    self.last_otp_duration_hours = last.get("duration_hours")
-                self.async_set_updated_data(self._build_data_dict())
-        except Exception as err:
-            _LOGGER.debug("Could not load stored OTP history: %s", err)
 
         self._cancel_bluetooth = bluetooth.async_register_callback(
             self.hass,
@@ -224,23 +209,76 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     def _merge_unlock_records(self, new_records: list[dict[str, Any]]) -> None:
-        """Merge unlock records, deduplicating by raw_timestamp."""
+        """Merge unlock records, deduplicating by raw_timestamp into a new list instance."""
         existing_ts = {r.get("raw_timestamp") for r in self.unlock_history if r.get("raw_timestamp")}
+        merged = list(self.unlock_history)
         for rec in new_records:
             ts = rec.get("raw_timestamp")
             if ts and ts not in existing_ts:
-                self.unlock_history.append(rec)
+                merged.append(rec)
                 existing_ts.add(ts)
             elif not ts:
-                self.unlock_history.append(rec)
-        self.unlock_history.sort(key=lambda x: x.get("raw_timestamp", 0), reverse=True)
-        if len(self.unlock_history) > 100:
-            self.unlock_history = self.unlock_history[:100]
+                merged.append(rec)
+        merged.sort(key=lambda x: x.get("raw_timestamp", 0), reverse=True)
+        if len(merged) > 100:
+            merged = merged[:100]
+        self.unlock_history = merged
 
     @property
     def is_cloud_connected(self) -> bool:
         """Return True if lock has active Atomberg cloud credentials."""
-        return bool(self.entry.options.get("auth_token") or self.entry.data.get("auth_token"))
+        return bool(
+            self.entry.options.get("auth_token")
+            or self.entry.data.get("auth_token")
+            or self.entry.options.get("refresh_token")
+            or self.entry.data.get("refresh_token")
+        )
+
+    def _get_cloud_sync_client(self) -> Any | None:
+        """Create and return an AtombergCloudSync client with auto-refresh support."""
+        auth_token = self.entry.options.get("auth_token") or self.entry.data.get("auth_token")
+        refresh_token = self.entry.options.get("refresh_token") or self.entry.data.get("refresh_token")
+
+        if not auth_token and not refresh_token:
+            return None
+
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+        from pyatomberg.lock.cloud_sync import AtombergCloudSync
+
+        session = async_get_clientsession(self.hass)
+
+        async def _on_token_refreshed(new_token: str, new_refresh: str | None) -> None:
+            """Persist refreshed tokens to config entry options and data."""
+            new_data = dict(self.entry.data)
+            new_data["auth_token"] = new_token
+            if new_refresh:
+                new_data["refresh_token"] = new_refresh
+
+            new_options = dict(self.entry.options)
+            if "auth_token" in new_options:
+                new_options["auth_token"] = new_token
+            if new_refresh and "refresh_token" in new_options:
+                new_options["refresh_token"] = new_refresh
+
+            self.hass.config_entries.async_update_entry(
+                self.entry,
+                data=new_data,
+                options=new_options,
+            )
+            _LOGGER.info("Persisted refreshed Cognito tokens to config entry %s", self.entry.entry_id)
+
+        return AtombergCloudSync(
+            access_token=auth_token,
+            refresh_token=refresh_token,
+            session=session,
+            on_token_refreshed=_on_token_refreshed,
+        )
+
+    @property
+    def is_wifi_lock(self) -> bool:
+        """Return True if the lock model has Wi-Fi connectivity (e.g. Cyphero / G1 series)."""
+        model_val = getattr(self, "model", None) or self.entry.data.get("model") or "SL1 Pro"
+        return any(m in str(model_val).lower() for m in ("cyphero", "wifi", "g1"))
 
     def _build_data_dict(self) -> dict[str, Any]:
         """Build summary data dictionary for listeners."""
@@ -248,23 +286,20 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "is_locked": self.is_locked,
             "is_unlocking": self.is_unlocking,
             "is_cloud_connected": self.is_cloud_connected,
+            "is_wifi_lock": self.is_wifi_lock,
             "battery_level": self.battery_level,
             "last_event": self.last_event.event if self.last_event else None,
             "credential_type": self.last_event.credential_type if self.last_event else None,
             "slot_id": self.last_event.slot_id if self.last_event else None,
             "pin_code": self.last_event.pin_code if self.last_event else None,
             "timestamp": self.last_event.timestamp if self.last_event else None,
-            "last_generated_otp": self.last_generated_otp,
-            "last_otp_expires_at": self.last_otp_expires_at,
-            "last_otp_valid_until_ts": self.last_otp_valid_until_ts,
-            "last_otp_duration_hours": self.last_otp_duration_hours,
+            "last_sync_timestamp": self.last_sync_timestamp,
+            "last_sync_ble_status": self.last_sync_ble_status,
+            "last_sync_ble_count": self.last_sync_ble_count,
+            "last_sync_cloud_status": self.last_sync_cloud_status,
+            "last_sync_cloud_count": self.last_sync_cloud_count,
             "unlock_history": self.unlock_history,
             "unlock_count": len(self.unlock_history),
-            "active_otps": [
-                o for o in self.otp_history
-                if o.get("valid_until_timestamp", 0) > int(time.time())
-            ],
-            "otp_history": list(reversed(self.otp_history)),
         }
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -340,10 +375,17 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             finally:
                 await lock.disconnect()
 
-    async def async_sync_device(self) -> None:
+    async def async_sync_device(self) -> dict[str, Any]:
         """Synchronize lock battery and event logs via BLE and optionally Cloud."""
         lock = self._ensure_lock_instance()
         ble_success = False
+        ble_error: str | None = None
+        ble_new_count = 0
+        cloud_new_count = 0
+        cloud_status = "Not Configured"
+
+        now_ts = int(time.time())
+        self.last_sync_timestamp = format_ist_time(now_ts)
 
         # 1. Attempt Bluetooth Low Energy sync
         async with self._busy:
@@ -364,9 +406,10 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 try:
                     records = await lock.fetch_incremental_logs(start_offset=0)
                     if records:
+                        before_count = len(self.unlock_history)
                         self._merge_unlock_records(records)
+                        ble_new_count = len(self.unlock_history) - before_count
                         latest = self.unlock_history[0] if self.unlock_history else records[0]
-                        now_ts = int(time.time())
                         self.last_event = LiveEvent(
                             battery=latest.get("battery", self.battery_level or 100),
                             event=latest.get("event", "Hardware Event"),
@@ -383,44 +426,55 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.debug("Could not fetch logs via BLE during sync: %s", l_err)
 
             except Exception as b_err:
+                ble_error = str(b_err)
                 _LOGGER.warning("BLE sync currently unavailable for %s: %s", self.address, b_err)
             finally:
                 if ble_success:
                     await lock.disconnect()
 
+        self.last_sync_ble_status = "Connected" if ble_success else f"Unreachable ({ble_error or 'timeout'})"
+        self.last_sync_ble_count = ble_new_count
+
         # 2. Query Cloud Firestore history ONLY if device is cloud-connected (Manual devices remain 100% offline)
         if self.is_cloud_connected:
-            auth_token = self.entry.options.get("auth_token") or self.entry.data.get("auth_token")
             try:
-                from homeassistant.helpers.aiohttp_client import async_get_clientsession
-                from pyatomberg.lock.cloud_sync import AtombergCloudSync
-
-                session = async_get_clientsession(self.hass)
-                sync_client = AtombergCloudSync(access_token=auth_token, session=session)
-                cloud_records = await sync_client.fetch_cloud_history(
-                    device_id=self.address,
-                    slot_mappings=self.slot_mappings,
-                )
+                sync_client = self._get_cloud_sync_client()
+                if sync_client:
+                    cloud_records = await sync_client.fetch_cloud_history(
+                        device_id=self.address,
+                        slot_mappings=self.slot_mappings,
+                    )
                 if cloud_records:
+                    before_count = len(self.unlock_history)
                     self._merge_unlock_records(cloud_records)
+                    cloud_new_count = len(self.unlock_history) - before_count
+                    cloud_status = f"Success ({len(cloud_records)} total in cloud)"
                     # If we don't have a live BLE event yet, populate from latest cloud record
                     if not ble_success and self.unlock_history and not self.last_event:
                         latest_cloud = self.unlock_history[0]
-                        now_ts = latest_cloud.get("raw_timestamp", int(time.time()))
+                        c_ts = latest_cloud.get("raw_timestamp", int(time.time()))
                         self.last_event = LiveEvent(
                             battery=self.battery_level or 100,
                             event=latest_cloud.get("event", "Hardware Event"),
                             credential_type=latest_cloud.get("credential_type", "Physical Credential"),
                             slot_id=latest_cloud.get("slot", 0),
                             pin_code="",
-                            timestamp=latest_cloud.get("datetime", format_ist_time(now_ts)),
-                            raw_timestamp=now_ts,
+                            timestamp=latest_cloud.get("datetime", format_ist_time(c_ts)),
+                            raw_timestamp=c_ts,
                             is_unlocked="Unlocked" in latest_cloud.get("event", ""),
                             is_auto_lock=False,
                             is_tamper=False,
                         )
+                else:
+                    cloud_status = "0 records in cloud"
             except Exception as c_err:
+                cloud_status = f"Error: {c_err}"
                 _LOGGER.debug("Could not fetch cloud logs: %s", c_err)
+        else:
+            cloud_status = "Offline (Manual Config)"
+
+        self.last_sync_cloud_status = cloud_status
+        self.last_sync_cloud_count = cloud_new_count
 
         # Save merged history
         try:
@@ -430,74 +484,35 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.async_set_updated_data(self._build_data_dict())
 
-    async def async_generate_otp(self, duration_hours: float = 0.5) -> dict[str, Any]:
-        """Generate a dynamic OTP for the lock keypad."""
-        if not self.is_cloud_connected:
-            raise HomeAssistantError(
-                "Remote OTP generation is only available for cloud-connected locks. "
-                "Manual offline locks do not support remote OTP."
-            )
-
-        from pyatomberg.lock.cloud_sync import AtombergCloudSync
-        from pyatomberg.lock.dynamic_pin import quantize_expiration_time
-        from homeassistant.helpers.aiohttp_client import async_get_clientsession
-
-        auth_token = self.entry.options.get("auth_token") or self.entry.data.get("auth_token")
-        expires_dt = quantize_expiration_time(duration_hours=duration_hours)
-        now_ts = int(time.time())
-
-        session = async_get_clientsession(self.hass)
-        sync_client = AtombergCloudSync(access_token=auth_token, session=session)
-        try:
-            res = await sync_client.get_dynamic_otp(
-                device_id=self.address,
-                start_time=now_ts,
-                end_time=int(expires_dt.timestamp()),
-            )
-            otp = str(res["otp"])
-            _LOGGER.info(
-                "Retrieved active cloud OTP for Atomberg lock %s: %s (valid until %s)",
-                self.address,
-                otp,
-                expires_dt.isoformat(),
-            )
-        except Exception as err:
-            _LOGGER.error("Failed to fetch dynamic OTP from Atomberg Cloud: %s", err)
-            raise HomeAssistantError(f"Cloud OTP fetch failed: {err}") from err
-
-        self.last_generated_otp = otp
-        self.last_otp_expires_at = expires_dt.isoformat()
-        self.last_otp_valid_until_ts = int(expires_dt.timestamp())
-        self.last_otp_duration_hours = duration_hours
-
-        otp_entry = {
-            "otp": otp,
-            "created_at": format_ist_time(now_ts),
-            "created_timestamp": now_ts,
-            "expires_at": expires_dt.isoformat(),
-            "valid_until_timestamp": int(expires_dt.timestamp()),
-            "duration_hours": duration_hours,
-            "lock_mac": self.address,
-        }
-        self.otp_history.append(otp_entry)
-        if len(self.otp_history) > 30:
-            self.otp_history = self.otp_history[-30:]
-        try:
-            await self._otp_store.async_save(self.otp_history)
-        except Exception as s_err:
-            _LOGGER.debug("Could not save OTP history: %s", s_err)
-
-        self.async_set_updated_data(self._build_data_dict())
+        # Notify user with clear diagnostic summary
+        from homeassistant.components import persistent_notification
+        clean_mac = self.address.replace(":", "_").lower()
+        total_history = len(self.unlock_history)
+        ble_msg = (
+            f"**Bluetooth Low Energy:** Connected (fetched {ble_new_count} new records from lock flash)"
+            if ble_success
+            else f"**Bluetooth Low Energy:** Lock unreachable ({ble_error or 'Lock may be asleep or out of range'})"
+        )
+        cloud_msg = f"**Atomberg Cloud:** {cloud_status} (added {cloud_new_count} new records)"
+        notification_msg = (
+            f"### Atomberg Lock Sync Report\n\n"
+            f"- {ble_msg}\n"
+            f"- {cloud_msg}\n"
+            f"- **Total Stored Activity:** {total_history} records\n"
+            f"- **Timestamp:** {self.last_sync_timestamp}"
+        )
+        persistent_notification.async_create(
+            self.hass,
+            notification_msg,
+            title="Atomberg Lock Sync Report",
+            notification_id=f"atomberg_sync_{clean_mac}",
+        )
 
         return {
-            "otp": otp,
-            "expires_at": expires_dt.isoformat(),
-            "valid_until_timestamp": int(expires_dt.timestamp()),
-            "duration_hours": duration_hours,
-            "lock_mac": self.address,
-            "active_otps": [
-                o for o in self.otp_history
-                if o.get("valid_until_timestamp", 0) > int(time.time())
-            ],
+            "ble_success": ble_success,
+            "ble_new_count": ble_new_count,
+            "cloud_status": cloud_status,
+            "cloud_new_count": cloud_new_count,
+            "total_history": total_history,
         }
 

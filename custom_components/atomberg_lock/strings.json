@@ -5,17 +5,29 @@
         "title": "Select Setup Mode",
         "description": "Choose how you want to configure your Atomberg Smart Lock.",
         "menu_options": {
-          "cloud": "Atomberg Cloud Account",
+          "cloud": "Cloud-Connected Setup (Account Sync)",
+          "cloud_assisted_local": "Cloud-Assisted Local Setup (Offline BLE)",
           "manual": "Manual Key Entry"
         },
         "menu_option_descriptions": {
-          "cloud": "Import lock credentials automatically from your Atomberg app account (supports Email, Google, Apple, or Facebook).",
-          "manual": "Configure the lock using an existing Bluetooth MAC address, Master Key, and Lock Salt."
+          "cloud": "Connect with your Atomberg cloud account to import lock credentials and sync history and status via cloud.",
+          "cloud_assisted_local": "Log into your Atomberg account once to automatically extract your lock's Bluetooth master key and salt, then disconnect and run 100% offline via local BLE.",
+          "manual": "Directly enter your Bluetooth MAC address, Master Key, and Lock Salt without cloud login."
         }
       },
       "cloud": {
         "title": "Atomberg Cloud Account Sync",
         "description": "Authenticate with your Atomberg account to import your smart locks:\n\n1. **[Log in to Atomberg]({auth_url})** *(opens in a new tab)*.\n2. Sign in with Email, Google, Apple, or Facebook.\n3. After signing in, your browser redirects to a page containing `?code=...`.\n4. Copy the complete address from your browser's address bar and paste it below.",
+        "data": {
+          "auth_code": "Redirect URL or Authorization Code"
+        },
+        "data_description": {
+          "auth_code": "Paste the complete redirected URL (containing ?code=...) or the authorization code."
+        }
+      },
+      "cloud_assisted_local": {
+        "title": "Cloud-Assisted Key Extraction",
+        "description": "Authenticate once with your Atomberg account to automatically extract your lock's Bluetooth master key and salt:\n\n1. **[Log in to Atomberg]({auth_url})** *(opens in a new tab)*.\n2. Sign in with Email, Google, Apple, or Facebook.\n3. After signing in, your browser redirects to a page containing `?code=...`.\n4. Copy the complete address from your browser's address bar and paste it below.\n\n*Note: Cloud tokens are immediately discarded after extraction for 100% offline BLE operation.*",
         "data": {
           "auth_code": "Redirect URL or Authorization Code"
         },
@@ -91,7 +103,7 @@
         "data_description": {
           "auto_lock_seconds": "Number of seconds before the UI resets the lock state to locked after an unlock.",
           "scan_interval_minutes": "Minutes between periodic Bluetooth background checks for battery and event log sync.",
-          "auth_token": "Optional bearer token from Atomberg Cloud. Required to generate 6-digit dynamic OTPs on the lock keypad."
+          "auth_token": "Optional bearer token from Atomberg Cloud. Required for cloud event history sync."
         }
       },
       "view_credentials": {
@@ -112,9 +124,6 @@
   },
   "entity": {
     "button": {
-      "generate_otp": {
-        "name": "Generate OTP"
-      },
       "sync_status": {
         "name": "Sync Status & Logs"
       }
@@ -125,9 +134,6 @@
       },
       "last_event": {
         "name": "Last Event"
-      },
-      "last_generated_otp": {
-        "name": "Last Generated OTP"
       },
       "last_unlock_method": {
         "name": "Last Unlock Method"
