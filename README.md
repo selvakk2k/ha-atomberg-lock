@@ -156,6 +156,14 @@ Even if you prefer running **[@dreadedlama/atomberg-lock](https://github.com/dre
 
 ## Credits & License
 
+### Upstream Authors & Contributors
 - Original reverse-engineering and BLE lock control protocol: **[@dreadedlama](https://github.com/dreadedlama/atomberg-lock)**.
 - Automated cloud auth, key extraction, and reference integration: **[`atomberg-py`](https://github.com/selvakk2k/atomberg-py)** and **`ha-atomberg-lock`**.
-- Licensed under the **GNU General Public License v3.0 (GPL-3.0)**. See [LICENSE](LICENSE) for details.
+
+### Project Contributors & AI Attribution
+* **Lead Architecture & Hardware Validation**: [@selvakk2k](https://github.com/selvakk2k)
+* **Code Implementation & Engineering**: **Antigravity** (Google DeepMind)
+* **Automated Code Review & Auditing**: **CodeRabbit** ([@coderabbitai](https://github.com/coderabbitai))
+* **Pre-Release Code Review & Auditing**: **Claude** (Anthropic)
+
+Licensed under the **GNU General Public License v3.0 (GPL-3.0)**. See [LICENSE](LICENSE) for details.
