@@ -154,7 +154,7 @@ def parse_live_event(dec: bytes, slot_mappings: dict[int, str] | None = None) ->
             cred_type_name = "Wrong Keypad PIN"
             pin_len = dec[26] if len(dec) > 26 else 0
             if 0 < pin_len <= 16 and len(dec) >= (27 + pin_len):
-                pin_str = dec[27 : 27 + pin_len].decode("ascii", errors="ignore")
+                pin_str = "****"
         elif fail_cred == 0x04:
             cred_type_name = "Unregistered NFC Card"
         else:
@@ -181,7 +181,7 @@ def parse_live_event(dec: bytes, slot_mappings: dict[int, str] | None = None) ->
             cred_type_name = "PIN Code"
             pin_len = dec[32] if len(dec) > 32 else 0
             if 0 < pin_len <= 16 and len(dec) >= (33 + pin_len):
-                pin_str = dec[33 : 33 + pin_len].decode("ascii", errors="ignore")
+                pin_str = "****"
         elif cred_type == 0x00 or slot_id == 0:
             cred_type_name = "Atomberg App"
         else:
@@ -227,9 +227,9 @@ def parse_log_record(rec: bytes, slot_mappings: dict[int, str] | None = None) ->
         elif cred_type == 0x02:
             cred_type_name = "Wrong Keypad PIN"
             pin_len = rec[26] if len(rec) > 26 else 0
-            if 0 < pin_len <= 12 and len(rec) >= (27 + pin_len):
-                pin_str = rec[27 : 27 + pin_len].decode("latin1", errors="ignore")
-            detail = f"Wrong Keypad PIN: {pin_str}" if pin_str else "Wrong Keypad PIN"
+            if pin_len > 0 and len(rec) > 27:
+                pin_str = "****"
+            detail = "Wrong Keypad PIN"
         elif cred_type == 0x04:
             cred_type_name = "Unregistered NFC Card"
             detail = "Unregistered NFC Card"
@@ -252,8 +252,9 @@ def parse_log_record(rec: bytes, slot_mappings: dict[int, str] | None = None) ->
         elif cred_type == 0x02:
             cred_type_name = "PIN Code"
             code_str = rec[18:24].decode("latin1", errors="ignore").rstrip("\x00")
-            pin_str = code_str
-            detail = f"Unlocked by - PIN: {code_str}" if code_str else "Unlocked by - PIN"
+            pin_str = "****" if code_str else ""
+            slot_desc = slot_name(slot, slot_mappings)
+            detail = f"Unlocked by - PIN ({slot_desc})" if slot_desc != f"Slot {slot}" else "Unlocked by - PIN"
         elif cred_type == 0x00 or slot == 0:
             cred_type_name = "Atomberg App"
             detail = "Unlocked by - Atomberg App"

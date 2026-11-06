@@ -86,7 +86,10 @@ class AtombergLockEntity(AtombergLockBaseEntity, LockEntity):
         """Lock the smart door lock.
 
         Note: Atomberg locks use automatic latch engagement. If manually requested,
-        we update the state to locked immediately.
+        we cancel any pending relock coroutine and advance the state to locked immediately.
         """
+        if self.coordinator._relock_task and not self.coordinator._relock_task.done():
+            self.coordinator._relock_task.cancel()
+        self.coordinator.is_unlocking = False
         self.coordinator.is_locked = True
         self.coordinator.async_set_updated_data(self.coordinator._build_data_dict())

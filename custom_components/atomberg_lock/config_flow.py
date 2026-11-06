@@ -46,6 +46,9 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pending_verifier: str | None = None
         self._auth_url: str | None = None
         self._is_local_only: bool = False
+        self._discovered_locks: list[Any] = []
+        self._auth_token: str | None = None
+        self._refresh_token: str | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -111,44 +114,23 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 sync_client = AtombergCloudSync(access_token=auth_token, session=session)
                 try:
                     locks = await sync_client.fetch_account_locks()
+                    # Filter out already configured locks
+                    configured_ids = self._async_current_ids()
+                    available_locks = [l for l in locks if l.mac_address.upper() not in configured_ids]
+
                     if not locks:
                         errors["base"] = "no_locks_found"
-                    else:
-                        first_lock = locks[0]
-                        await self.async_set_unique_id(first_lock.mac_address)
-                        self._abort_if_unique_id_configured()
-
-                        if self._is_local_only:
-                            title = first_lock.name or f"Atomberg Lock ({first_lock.mac_address})"
-                            entry_data = {
-                                CONF_MAC: first_lock.mac_address,
-                                CONF_MASTER_KEY: first_lock.master_key_hex,
-                                CONF_SALT: first_lock.salt_hex,
-                                CONF_PAIRING_METHOD: METHOD_MANUAL,
-                                "name": first_lock.name or "Atomberg Smart Lock",
-                                "model": first_lock.model or "smart_lock",
-                                "temp_auth_code": first_lock.temp_auth_code or "",
-                                "general_auth_code": first_lock.general_auth_code or "",
-                            }
-                        else:
-                            title = first_lock.name or f"Atomberg Lock ({first_lock.mac_address})"
-                            entry_data = {
-                                CONF_MAC: first_lock.mac_address,
-                                CONF_MASTER_KEY: first_lock.master_key_hex,
-                                CONF_SALT: first_lock.salt_hex,
-                                CONF_PAIRING_METHOD: METHOD_CLOUD,
-                                "name": first_lock.name or "Atomberg Smart Lock",
-                                "model": first_lock.model or "smart_lock",
-                                "auth_token": auth_token,
-                                "refresh_token": refresh_token,
-                                "temp_auth_code": first_lock.temp_auth_code or "",
-                                "general_auth_code": first_lock.general_auth_code or "",
-                            }
-
-                        return self.async_create_entry(
-                            title=title,
-                            data=entry_data,
+                    elif not available_locks:
+                        return self.async_abort(reason="already_configured")
+                    elif len(available_locks) == 1:
+                        return await self._create_entry_from_lock(
+                            available_locks[0], auth_token=auth_token, refresh_token=refresh_token
                         )
+                    else:
+                        self._discovered_locks = available_locks
+                        self._auth_token = auth_token
+                        self._refresh_token = refresh_token
+                        return await self.async_step_select_lock()
                 except Exception as err:
                     _LOGGER.exception("Cloud sync failed: %s", err)
                     errors["base"] = "cloud_sync_failed"
@@ -163,6 +145,62 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={"auth_url": self._auth_url or ""},
         )
 
+    async def async_step_select_lock(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle selection when multiple locks are found on account."""
+        if user_input is not None:
+            chosen_mac = user_input["selected_lock"]
+            matching = [l for l in self._discovered_locks if l.mac_address == chosen_mac]
+            if matching:
+                return await self._create_entry_from_lock(
+                    matching[0], auth_token=self._auth_token, refresh_token=self._refresh_token
+                )
+
+        options = {
+            l.mac_address: f"{l.name or 'Atomberg Lock'} ({l.mac_address})"
+            for l in self._discovered_locks
+        }
+        schema = vol.Schema({
+            vol.Required("selected_lock"): vol.In(options),
+        })
+        return self.async_show_form(step_id="select_lock", data_schema=schema)
+
+    async def _create_entry_from_lock(
+        self, lock: Any, auth_token: str | None, refresh_token: str | None
+    ) -> FlowResult:
+        """Create entry dictionary from a cloud lock object."""
+        await self.async_set_unique_id(lock.mac_address.upper())
+        self._abort_if_unique_id_configured()
+
+        title = lock.name or f"Atomberg Lock ({lock.mac_address})"
+        if self._is_local_only:
+            entry_data = {
+                CONF_MAC: lock.mac_address.upper(),
+                CONF_MASTER_KEY: lock.master_key_hex,
+                CONF_SALT: lock.salt_hex,
+                CONF_PAIRING_METHOD: METHOD_MANUAL,
+                "name": lock.name or "Atomberg Smart Lock",
+                "model": lock.model or "smart_lock",
+                "temp_auth_code": lock.temp_auth_code or "",
+                "general_auth_code": lock.general_auth_code or "",
+            }
+        else:
+            entry_data = {
+                CONF_MAC: lock.mac_address.upper(),
+                CONF_MASTER_KEY: lock.master_key_hex,
+                CONF_SALT: lock.salt_hex,
+                CONF_PAIRING_METHOD: METHOD_CLOUD,
+                "name": lock.name or "Atomberg Smart Lock",
+                "model": lock.model or "smart_lock",
+                "auth_token": auth_token,
+                "refresh_token": refresh_token,
+                "temp_auth_code": lock.temp_auth_code or "",
+                "general_auth_code": lock.general_auth_code or "",
+            }
+
+        return self.async_create_entry(title=title, data=entry_data)
+
     async def async_step_manual(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -171,18 +209,35 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             mac = user_input[CONF_MAC].strip().upper()
-            await self.async_set_unique_id(mac)
-            self._abort_if_unique_id_configured()
+            raw_key = user_input[CONF_MASTER_KEY].strip()
+            raw_salt = user_input[CONF_SALT].strip()
 
-            return self.async_create_entry(
-                title=f"Atomberg Lock ({mac})",
-                data={
-                    CONF_MAC: mac,
-                    CONF_MASTER_KEY: user_input[CONF_MASTER_KEY].strip(),
-                    CONF_SALT: user_input[CONF_SALT].strip(),
-                    CONF_PAIRING_METHOD: METHOD_MANUAL,
-                },
-            )
+            # Validate MAC address
+            mac_parts = mac.split(":")
+            if len(mac_parts) != 6 or not all(len(p) == 2 and all(c in "0123456789ABCDEFabcdef" for c in p) for p in mac_parts):
+                errors[CONF_MAC] = "invalid_mac"
+
+            # Validate 16-byte master key (32 hex characters)
+            if len(raw_key) != 32 or not all(c in "0123456789ABCDEFabcdef" for c in raw_key):
+                errors[CONF_MASTER_KEY] = "invalid_key"
+
+            # Validate 4-byte salt (8 hex characters)
+            if len(raw_salt) != 8 or not all(c in "0123456789ABCDEFabcdef" for c in raw_salt):
+                errors[CONF_SALT] = "invalid_salt"
+
+            if not errors:
+                await self.async_set_unique_id(mac)
+                self._abort_if_unique_id_configured()
+
+                return self.async_create_entry(
+                    title=f"Atomberg Lock ({mac})",
+                    data={
+                        CONF_MAC: mac,
+                        CONF_MASTER_KEY: raw_key.lower(),
+                        CONF_SALT: raw_salt.lower(),
+                        CONF_PAIRING_METHOD: METHOD_MANUAL,
+                    },
+                )
 
         schema = vol.Schema({
             vol.Required(CONF_MAC): str,
@@ -195,7 +250,41 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle reconfiguration of the lock."""
-        return await self.async_step_user()
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            raw_key = user_input[CONF_MASTER_KEY].strip()
+            raw_salt = user_input[CONF_SALT].strip()
+
+            if len(raw_key) != 32 or not all(c in "0123456789ABCDEFabcdef" for c in raw_key):
+                errors[CONF_MASTER_KEY] = "invalid_key"
+
+            if len(raw_salt) != 8 or not all(c in "0123456789ABCDEFabcdef" for c in raw_salt):
+                errors[CONF_SALT] = "invalid_salt"
+
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data={
+                        **entry.data,
+                        CONF_MASTER_KEY: raw_key.lower(),
+                        CONF_SALT: raw_salt.lower(),
+                    },
+                )
+
+        current_key = str(entry.data.get(CONF_MASTER_KEY, ""))
+        current_salt = str(entry.data.get(CONF_SALT, ""))
+        schema = vol.Schema({
+            vol.Required(CONF_MASTER_KEY, default=current_key): str,
+            vol.Required(CONF_SALT, default=current_salt): str,
+        })
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"mac": str(entry.data.get(CONF_MAC, ""))},
+        )
 
     @staticmethod
     @callback

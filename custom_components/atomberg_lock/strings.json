@@ -45,18 +45,37 @@
         },
         "data_description": {
           "mac_address": "12-digit hex MAC address (e.g. AA:BB:CC:11:22:33).",
-          "master_key": "16-byte ASCII key or 32-character hex key.",
-          "salt": "4-byte hex salt (e.g. 1a2b3c4d)."
+          "master_key": "32-character hex master key.",
+          "salt": "8-character hex salt (e.g. 1a2b3c4d)."
+        }
+      },
+      "select_lock": {
+        "title": "Select Atomberg Lock",
+        "description": "Multiple smart locks were found on your Atomberg account. Choose which lock you want to add.",
+        "data": {
+          "selected_lock": "Smart Lock"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Atomberg Lock ({mac})",
+        "description": "Update the cryptographic master key and salt for your smart lock.",
+        "data": {
+          "master_key": "Master Key",
+          "salt": "Lock Salt"
         }
       }
     },
     "error": {
       "cloud_sync_failed": "Failed to retrieve lock credentials from Atomberg account.",
       "no_locks_found": "No smart locks were found associated with this Atomberg account.",
+      "invalid_mac": "Invalid Bluetooth MAC address format (must be 6 hex octets separated by colons).",
+      "invalid_key": "Invalid Master Key format (must be a 32-character hex string).",
+      "invalid_salt": "Invalid Salt format (must be an 8-character hex string).",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
-      "already_configured": "This Atomberg lock is already configured."
+      "already_configured": "This Atomberg lock is already configured.",
+      "reconfigure_successful": "Lock credentials were updated successfully."
     }
   },
   "options": {

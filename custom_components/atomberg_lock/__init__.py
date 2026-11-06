@@ -103,6 +103,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update options when changed."""
+    coordinator: AtombergLockCoordinator | None = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if coordinator and hasattr(coordinator, "_loaded_options"):
+        # If options dictionary has not actually changed (e.g. background token refresh), skip reload
+        if coordinator._loaded_options == entry.options:
+            return
+        coordinator._loaded_options = dict(entry.options)
+
     await hass.config_entries.async_reload(entry.entry_id)
 
 

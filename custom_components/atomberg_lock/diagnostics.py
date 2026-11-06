@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -32,6 +33,8 @@ TO_REDACT = {
     "mac_address",
     "address",
     "pin",
+    "pin_code",
+    "detail",
     "otp",
     "code",
 }
@@ -47,6 +50,14 @@ async def async_get_config_entry_diagnostics(
     if coordinator and hasattr(coordinator, "data") and coordinator.data:
         coordinator_data = async_redact_data(dict(coordinator.data), TO_REDACT)
 
+    last_event_dict = None
+    if coordinator and getattr(coordinator, "last_event", None):
+        raw_last = coordinator.last_event
+        if is_dataclass(raw_last):
+            last_event_dict = async_redact_data(asdict(raw_last), TO_REDACT)
+        elif isinstance(raw_last, dict):
+            last_event_dict = async_redact_data(raw_last, TO_REDACT)
+
     return {
         "entry": {
             "title": entry.title,
@@ -60,11 +71,12 @@ async def async_get_config_entry_diagnostics(
         "coordinator": {
             "last_update_success": getattr(coordinator, "last_update_success", None),
             "data": coordinator_data,
-            "battery": getattr(coordinator, "battery", None),
-            "last_event": getattr(coordinator, "last_event", None),
-            "cred_type": getattr(coordinator, "cred_type", None),
-            "slot_id": getattr(coordinator, "slot_id", None),
-            "log_record_count": getattr(coordinator, "log_record_count", 0),
+            "battery_level": getattr(coordinator, "battery_level", None),
+            "last_event": last_event_dict,
+            "unlock_history_count": len(getattr(coordinator, "unlock_history", [])),
+            "last_sync_timestamp": getattr(coordinator, "last_sync_timestamp", None),
+            "last_sync_ble_status": getattr(coordinator, "last_sync_ble_status", None),
+            "last_sync_cloud_status": getattr(coordinator, "last_sync_cloud_status", None),
         },
     }
 

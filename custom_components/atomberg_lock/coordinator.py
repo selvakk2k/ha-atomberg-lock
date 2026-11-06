@@ -32,11 +32,12 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
+        scan_interval = entry.options.get("scan_interval_minutes", 30)
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{entry.data[CONF_MAC]}",
-            update_interval=timedelta(minutes=30),  # Periodic battery & log sync
+            update_interval=timedelta(minutes=scan_interval),  # Periodic battery & log sync
         )
         self.entry = entry
         self.address = str(entry.data[CONF_MAC]).upper()
@@ -89,6 +90,7 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._cancel_bluetooth: Any = None
         self._log_store = Store[list[dict[str, Any]]](hass, 1, f"{DOMAIN}_{entry.entry_id}_logs")
         self.unlock_history: list[dict[str, Any]] = []
+        self._loaded_options: dict[str, Any] = dict(entry.options)
 
     async def async_start(self) -> None:
         """Start listening for live Bluetooth advertisements via ESPHome Bluetooth Proxies."""
@@ -198,8 +200,10 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._relock_task and not self._relock_task.done():
             self._relock_task.cancel()
 
+        auto_lock = self.entry.options.get("auto_lock_seconds", AUTO_LOCK_SECONDS)
+
         async def _relock_coro() -> None:
-            await asyncio.sleep(AUTO_LOCK_SECONDS)
+            await asyncio.sleep(auto_lock)
             self.is_locked = True
             self.is_unlocking = False
             self.async_set_updated_data(self._build_data_dict())
@@ -265,6 +269,8 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 data=new_data,
                 options=new_options,
             )
+            # Synchronize internal snapshot so listener does not treat token refresh as an options change
+            self._loaded_options = dict(new_options)
             _LOGGER.info("Persisted refreshed Cognito tokens to config entry %s", self.entry.entry_id)
 
         return AtombergCloudSync(
@@ -429,8 +435,10 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ble_error = str(b_err)
                 _LOGGER.warning("BLE sync currently unavailable for %s: %s", self.address, b_err)
             finally:
-                if ble_success:
+                try:
                     await lock.disconnect()
+                except Exception as d_err:
+                    _LOGGER.debug("Error disconnecting lock during sync cleanup: %s", d_err)
 
         self.last_sync_ble_status = "Connected" if ble_success else f"Unreachable ({ble_error or 'timeout'})"
         self.last_sync_ble_count = ble_new_count
