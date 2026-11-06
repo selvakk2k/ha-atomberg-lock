@@ -9,7 +9,7 @@ Reference custom Home Assistant integration for local Bluetooth Low Energy (BLE)
 > [!NOTE]
 > **Reference Demo & Adoption Notice**: Offline Bluetooth lock control was originally reverse-engineered and established by **[@dreadedlama](https://github.com/dreadedlama/atomberg-lock)**, which is the foundational and older community integration for Atomberg smart door locks.
 > 
-> The core missing puzzle piece introduced by this project and [`atomberg-py`](https://github.com/selvakk2k/atomberg-py) is **automated Cloud-Assisted Key Extraction & AWS Cognito SSO Login**. Previously, users had to resort to manual packet captures or phone analysis to obtain their lock's `master_key` and `salt`. This authentication and extraction workflow should ideally be adopted directly into **[@dreadedlama/atomberg-lock](https://github.com/dreadedlama/atomberg-lock)** so the entire community benefits from zero-hassle, 1-click lock onboarding.
+> The core missing puzzle piece introduced by this project and [`pyatomberg`](https://github.com/selvakk2k/pyatomberg) is **automated Cloud-Assisted Key Extraction & AWS Cognito SSO Login**. Previously, users had to resort to manual packet captures or phone analysis to obtain their lock's `master_key` and `salt`. This authentication and extraction workflow should ideally be adopted directly into **[@dreadedlama/atomberg-lock](https://github.com/dreadedlama/atomberg-lock)** so the entire community benefits from zero-hassle, 1-click lock onboarding.
 
 Provides direct offline locking, unlocking, battery reporting, and physical credential recognition (fingerprints, keycards, PINs) via Home Assistant's native Bluetooth stack or ESPHome Bluetooth Proxies.
 
@@ -131,7 +131,7 @@ The `sensor.*_last_user` entity will immediately display the assigned name whene
 
 ## Viewing Extracted Keys & Credentials
 
-Even if you prefer running **[@dreadedlama/atomberg-lock](https://github.com/dreadedlama/atomberg-lock)** or an offline ESPHome setup, you can use this integration as a **zero-effort key extraction utility** to retrieve your lock's offline encryption keys without needing a rooted phone or BLE packet sniffer:
+If you prefer running **[@dreadedlama/atomberg-lock](https://github.com/dreadedlama/atomberg-lock)** or an offline ESPHome setup, you can use this integration as a **zero-effort key extraction utility** to retrieve your lock's offline encryption keys without needing a rooted phone or BLE packet sniffer:
 
 1. Follow the [Configuration & Onboarding](#configuration--onboarding) wizard and select **Cloud-Assisted Local Setup** or **Atomberg Cloud Account**.
 2. Sign in once with your Atomberg account. The integration securely extracts your lock parameters.
@@ -158,7 +158,6 @@ Even if you prefer running **[@dreadedlama/atomberg-lock](https://github.com/dre
 
 ### Upstream Authors & Contributors
 - Original reverse-engineering and BLE lock control protocol: **[@dreadedlama](https://github.com/dreadedlama/atomberg-lock)**.
-- Automated cloud auth, key extraction, and reference integration: **[`atomberg-py`](https://github.com/selvakk2k/atomberg-py)** and **`ha-atomberg-lock`**.
 
 ### Project Contributors & AI Attribution
 * **Lead Architecture & Hardware Validation**: [@selvakk2k](https://github.com/selvakk2k)
