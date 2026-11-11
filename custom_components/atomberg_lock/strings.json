@@ -17,7 +17,7 @@
       },
       "cloud": {
         "title": "Atomberg Cloud Account Sync",
-        "description": "Authenticate with your Atomberg account to import your smart locks:\n\n1. **[Log in to Atomberg]({auth_url})** *(opens in a new tab)*.\n2. Sign in with Email, Google, Apple, or Facebook.\n3. After signing in, your browser redirects to a page containing `?code=...`.\n4. Copy the complete address from your browser's address bar and paste it below.",
+        "description": "Authenticate with your Atomberg account to import your smart locks:\n\n1. **[Log in to Atomberg]({auth_url})** *(opens in a new tab)*.\n2. Sign in with Email, Google, Apple, or Facebook.\n3. After signing in, your browser redirects to a page containing `?code=...`.\n4. Copy the complete address from your browser's address bar and paste it below.\n\n*Mobile tip: If signing in opens the Atomberg app, switch back to your browser and enable Desktop view to see the `?code=...` URL, or use a desktop browser.*",
         "data": {
           "auth_code": "Redirect URL or Authorization Code"
         },
@@ -27,7 +27,7 @@
       },
       "cloud_assisted_local": {
         "title": "Cloud-Assisted Key Extraction",
-        "description": "Authenticate once with your Atomberg account to automatically extract your lock's Bluetooth master key and salt:\n\n1. **[Log in to Atomberg]({auth_url})** *(opens in a new tab)*.\n2. Sign in with Email, Google, Apple, or Facebook.\n3. After signing in, your browser redirects to a page containing `?code=...`.\n4. Copy the complete address from your browser's address bar and paste it below.\n\n*Note: Cloud tokens are immediately discarded after extraction for 100% offline BLE operation.*",
+        "description": "Authenticate once with your Atomberg account to automatically extract your lock's Bluetooth master key and salt:\n\n1. **[Log in to Atomberg]({auth_url})** *(opens in a new tab)*.\n2. Sign in with Email, Google, Apple, or Facebook.\n3. After signing in, your browser redirects to a page containing `?code=...`.\n4. Copy the complete address from your browser's address bar and paste it below.\n\n*Mobile tip: If signing in opens the Atomberg app, switch back to your browser and enable Desktop view to see the `?code=...` URL, or use a desktop browser.*\n\n*Note: Cloud tokens are immediately discarded after extraction for 100% offline BLE operation.*",
         "data": {
           "auth_code": "Redirect URL or Authorization Code"
         },

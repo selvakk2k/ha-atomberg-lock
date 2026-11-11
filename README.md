@@ -98,10 +98,12 @@ Provides direct offline locking, unlocking, battery reporting, and physical cred
 2. Search for **Atomberg Smart Lock**.
 3. Select your setup method:
    - **Atomberg Cloud Account (Recommended)**:
-     - Click the provided **[Click here to log in to Atomberg]** link.
+     - Click the provided **Log in to Atomberg** link.
      - Sign in to your account in your browser (supports Email, Google, Apple, or Facebook).
      - Copy the redirected URL (`https://app.atomberg-iot.com/?code=...`) from your address bar and paste it into the dialog.
      - Home Assistant automatically retrieves your lock's Bluetooth MAC address, Master Key, and Salt.
+
+     > **Mobile setup note:** If you open the login link on a phone with the Atomberg app installed, signing in will redirect you into the Atomberg app before you can copy the link. Switch back to your mobile browser tab and enable **Desktop view / Desktop site** so the `https://app.atomberg-iot.com/?code=...` URL stays visible in the address bar (or complete this step from a desktop browser).
    - **Manual Key Entry**:
      - Direct offline entry of your 12-digit MAC address, 16-byte Master Key, and 4-byte Salt.
 
