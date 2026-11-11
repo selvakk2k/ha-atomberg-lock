@@ -68,28 +68,16 @@ Provides direct offline locking, unlocking, battery reporting, and physical cred
 
 ### Method 1: Via Home Assistant Marketplace (Recommended)
 
-*Requires Home Assistant **2026.11** or newer. (On an older version? Expand the legacy HACS instructions below.)*
-
 [![Open your Home Assistant instance and open a repository in the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=selvakk2k&repository=ha-atomberg-lock&category=integration)
 
-1. Click the **Open Marketplace repository** button above, or go to **Settings** → **Marketplace** in Home Assistant.
-2. In the upper-right corner, select **Add from link**.
-3. Under **GitHub link**, enter `https://github.com/selvakk2k/ha-atomberg-lock` (connect your GitHub account if prompted), then select **Add**. *(If prompted for **Type**, select **Integration** and select **Add** again.)*
-4. Open **Atomberg Smart Lock** from the list, select **Download**, and restart Home Assistant Core.
+**Home Assistant `2026.11+` (Marketplace):**
+1. Click the **Open Marketplace repository** button above, or go to **Settings** → **Marketplace**.
+2. Select **Add from link** (upper-right), enter `https://github.com/selvakk2k/ha-atomberg-lock` (connect GitHub if prompted), and select **Add** *(if prompted for **Type**, select **Integration**)*.
+3. Open **Atomberg Smart Lock**, select **Download**, and restart Home Assistant Core.
 
-<details>
-<summary>Home Assistant 2026.10 or older (Legacy HACS)</summary>
-
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=selvakk2k&repository=ha-atomberg-lock&category=integration)
-
-1. Click the **Open repository in HACS** button above, or open **HACS** in your Home Assistant sidebar.
-2. Click the top-right three dots menu and select **Custom repositories**.
-3. Paste repository URL: `https://github.com/selvakk2k/ha-atomberg-lock`
-4. Select category: **Integration**.
-5. Click **Add**, locate **Atomberg Smart Lock**, and click **Download**.
-6. Restart Home Assistant Core.
-
-</details>
+**Home Assistant `<= 2026.10` (Legacy HACS):**
+1. Open **HACS** in your sidebar → top-right menu (⋮) → **Custom repositories** → Add `https://github.com/selvakk2k/ha-atomberg-lock` with category **Integration**.
+2. Search for **Atomberg Smart Lock**, click **Download**, and restart Home Assistant Core.
 
 ### Method 2: Manual Installation
 
