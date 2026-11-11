@@ -28,6 +28,7 @@ Provides direct offline locking, unlocking, battery reporting, and physical cred
 - [Managing Credential Names](#managing-credential-names)
 - [Viewing Extracted Keys & Credentials](#viewing-extracted-keys--credentials)
 - [Troubleshooting](#troubleshooting)
+- [My Integrations & Lovelace Cards](#my-integrations--lovelace-cards)
 - [Credits & License](#credits--license)
 
 ---
@@ -167,6 +168,23 @@ If you prefer running **[@dreadedlama/atomberg-lock](https://github.com/dreadedl
 
 - **Lock shows unavailable**: Locks enter low-power sleep when idle. The integration maintains availability state and wakes the device upon command dispatch. Ensure your Bluetooth adapter or ESPHome proxy has clear signal (RSSI > -85 dBm).
 - **Connection timeouts**: If multiple Bluetooth clients attempt connections simultaneously, the lock may reject secondary sessions. Ensure only Home Assistant (or the official app) is communicating with the lock at any given moment.
+
+---
+
+## My Integrations & Lovelace Cards
+
+| Integration / Card | Category | Description | Status |
+| :--- | :--- | :--- | :--- |
+| [Atomberg Smart Lock](https://github.com/selvakk2k/ha-atomberg-lock) | Integration | Local BLE & Cloud-Assisted key extraction for Atomberg Smart Door Locks (SL1 / SL1 Pro) | `Stable` |
+| [Atomberg Smart Lock Card](https://github.com/selvakk2k/atomberg-lock-card) | Lovelace Card | Custom Lovelace card for Atomberg Smart Door Locks with activity & audit logs | `Stable` |
+| [CP PLUS STQC](https://github.com/selvakk2k/ha-cpplus-stqc) | Integration | Local NVR & STQC IP Camera integration with real-time AI push events | `Beta` |
+| [Panasonic AC India](https://github.com/selvakk2k/ha-panasonic-ac-in) | Integration | Local IR & Cloud MQTT control for Panasonic MirAIe Air Conditioners | `Stable` |
+| [Panasonic AC India Card](https://github.com/selvakk2k/panasonic-ac-card-in) | Lovelace Card | Modern Lovelace card for Panasonic ACs | `Stable` |
+| [Indian BLDC Fan IR](https://github.com/selvakk2k/ha-bldc-fan-ir) | Integration | Native Home Assistant integration for Indian BLDC ceiling fans (Atomberg, Superfan) | `Stable` |
+| [Indian BLDC Fan Card](https://github.com/selvakk2k/bldc-fan-card) | Lovelace Card | Interactive Lovelace card with speed dial & mode toggles for BLDC fans | `Stable` |
+| [IFB Washer Local](https://github.com/selvakk2k/ifb-washer-local) | Integration | Local Wi-Fi integration for IFB Front Load Washing Machines & Washer Dryers | `Beta` |
+| [IFB Washer Card](https://github.com/selvakk2k/ifb-washer-card) | Lovelace Card | Dedicated Lovelace card for IFB washers & dryers with cycle controls | `Beta` |
+| [Tinxy Local Python](https://github.com/selvakk2k/ha-tinxylocal) | Integration | Pure-Python local control for Tinxy smart switches and modules | `Stable` |
 
 ---
 
