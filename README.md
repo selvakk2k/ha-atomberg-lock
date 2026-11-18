@@ -1,8 +1,12 @@
 # Atomberg Smart Lock (`ha-atomberg-lock`)
 
-[![Hardware Verified](https://img.shields.io/badge/Hardware-Verified%20(SL1%20Pro)-success.svg)](#hardware-compatibility)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Marketplace: Custom](https://img.shields.io/badge/Marketplace-Custom%20Integration-41BDF5.svg)](https://www.home-assistant.io/integrations/marketplace/)
+<p align="center">
+  <a href="https://www.home-assistant.io/integrations/marketplace/"><img src="https://img.shields.io/badge/Marketplace-Custom-41BDF5.svg?style=flat-square" alt="Marketplace Custom"></a>
+  <a href="https://github.com/selvakk2k/ha-atomberg-lock/releases/latest"><img src="https://img.shields.io/github/v/release/selvakk2k/ha-atomberg-lock?label=Stable&style=flat-square" alt="Stable"></a>
+  <a href="https://github.com/selvakk2k/ha-atomberg-lock/releases"><img src="https://img.shields.io/github/v/release/selvakk2k/ha-atomberg-lock?include_prereleases&label=Beta&color=orange&style=flat-square" alt="Beta"></a>
+  <a href="https://github.com/selvakk2k"><img src="https://img.shields.io/badge/AI%20Assisted-Antigravity%20%7C%20Claude%20%7C%20CodeRabbit-blueviolet?style=flat-square" alt="AI-Assisted"></a>
+  <a href="https://aiattribution.github.io/interpret-attribution"><img src="https://img.shields.io/badge/AI%20Attribution-AIA%20PAI%20Nc%20Hin-orange?style=flat-square" alt="AI Attribution"></a>
+</p>
 
 Reference custom Home Assistant integration for local Bluetooth Low Energy (BLE) control and monitoring of **Atomberg Smart Door Locks** (SL1, SL1 Pro).
 
