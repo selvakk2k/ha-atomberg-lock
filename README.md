@@ -162,6 +162,7 @@ If you prefer running **[@dreadedlama/atomberg-lock](https://github.com/dreadedl
 
 - **Lock shows unavailable**: Locks enter low-power sleep when idle. The integration maintains availability state and wakes the device upon command dispatch. Ensure your Bluetooth adapter or ESPHome proxy has clear signal (RSSI > -85 dBm).
 - **Connection timeouts**: If multiple Bluetooth clients attempt connections simultaneously, the lock may reject secondary sessions. Ensure only Home Assistant (or the official app) is communicating with the lock at any given moment.
+- **Core Diagnostics**: To export sanitized diagnostic information for debugging Bluetooth connectivity vs. cloud sync, navigate to **Settings → Devices & Services → Atomberg Smart Lock**, select your device, and click **Download diagnostics**. All personal phone numbers and master authentication keys are automatically redacted.
 
 ---
 
