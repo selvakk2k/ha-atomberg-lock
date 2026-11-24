@@ -92,6 +92,13 @@ class AtombergLockCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.unlock_history: list[dict[str, Any]] = []
         self._loaded_options: dict[str, Any] = dict(entry.options)
 
+    @property
+    def is_connected(self) -> bool:
+        """Return True if the underlying BLE client is connected."""
+        if self._lock_device:
+            return self._lock_device.is_connected
+        return False
+
     async def async_start(self) -> None:
         """Start listening for live Bluetooth advertisements via ESPHome Bluetooth Proxies."""
         try:

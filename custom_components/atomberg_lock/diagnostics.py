@@ -44,7 +44,7 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry with sensitive data redacted."""
-    coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    coordinator = getattr(entry, "runtime_data", None) or hass.data.get(DOMAIN, {}).get(entry.entry_id)
 
     coordinator_data = {}
     if coordinator and hasattr(coordinator, "data") and coordinator.data:
@@ -58,6 +58,13 @@ async def async_get_config_entry_diagnostics(
         elif isinstance(raw_last, dict):
             last_event_dict = async_redact_data(raw_last, TO_REDACT)
 
+    is_connected: bool | None = None
+    if coordinator:
+        if getattr(coordinator, "_lock_device", None):
+            is_connected = coordinator._lock_device.is_connected
+        else:
+            is_connected = getattr(coordinator, "is_connected", False)
+
     return {
         "entry": {
             "title": entry.title,
@@ -69,6 +76,7 @@ async def async_get_config_entry_diagnostics(
             "pref_disable_polling": entry.pref_disable_polling,
         },
         "coordinator": {
+            "connected": is_connected,
             "last_update_success": getattr(coordinator, "last_update_success", None),
             "data": coordinator_data,
             "battery_level": getattr(coordinator, "battery_level", None),

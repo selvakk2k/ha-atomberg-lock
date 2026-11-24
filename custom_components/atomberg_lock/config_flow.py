@@ -107,7 +107,7 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     auth_token = tokens.get("access_token") or tokens.get("id_token", "")
                     refresh_token = tokens.get("refresh_token", "")
                 except Exception as err:
-                    _LOGGER.exception("Token exchange failed: %s", err)
+                    _LOGGER.warning("Token exchange failed: %s", err, exc_info=True)
                     errors["base"] = "cloud_sync_failed"
 
             if not errors and auth_token:
@@ -132,7 +132,7 @@ class AtombergLockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         self._refresh_token = refresh_token
                         return await self.async_step_select_lock()
                 except Exception as err:
-                    _LOGGER.exception("Cloud sync failed: %s", err)
+                    _LOGGER.warning("Cloud sync failed: %s", err, exc_info=True)
                     errors["base"] = "cloud_sync_failed"
 
         schema = vol.Schema({

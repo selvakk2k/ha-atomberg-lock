@@ -20,7 +20,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Atomberg lock entity from a config entry."""
-    coordinator: AtombergLockCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: AtombergLockCoordinator = (
+        getattr(entry, "runtime_data", None) or hass.data[DOMAIN][entry.entry_id]
+    )
     async_add_entities([AtombergLockEntity(coordinator)])
 
 

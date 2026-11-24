@@ -29,12 +29,19 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.LOCK, Platform.SENSOR, Platform.BUTTON]
 
 
+AtombergConfigEntry = ConfigEntry
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Atomberg Smart Lock from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
     coordinator = AtombergLockCoordinator(hass, entry)
     await coordinator.async_start()
+    try:
+        entry.runtime_data = coordinator
+    except AttributeError:
+        pass
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     # Initial battery & status check in background
@@ -42,7 +49,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass, coordinator.async_refresh(), f"{DOMAIN}_initial_refresh_{entry.entry_id}"
     )
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except Exception:
+        coordinator.async_stop()
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+        raise
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     def _get_coordinator_from_call(call: ServiceCall) -> AtombergLockCoordinator:
