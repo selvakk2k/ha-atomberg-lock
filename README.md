@@ -1,5 +1,6 @@
 # Atomberg Smart Lock (`ha-atomberg-lock`)
 
+<!-- ha-marketplace:exclude-start -->
 <p align="center">
   <a href="https://www.home-assistant.io/integrations/marketplace/"><img src="https://img.shields.io/badge/Marketplace-Custom-41BDF5.svg?style=flat-square" alt="Marketplace Custom"></a>
   <a href="https://github.com/selvakk2k/ha-atomberg-lock/releases/latest"><img src="https://img.shields.io/github/v/release/selvakk2k/ha-atomberg-lock?label=Stable&style=flat-square" alt="Stable"></a>
@@ -7,6 +8,7 @@
   <a href="https://github.com/selvakk2k"><img src="https://img.shields.io/badge/AI%20Assisted-Antigravity%20%7C%20Claude%20%7C%20CodeRabbit-blueviolet?style=flat-square" alt="AI-Assisted"></a>
   <a href="https://aiattribution.github.io/interpret-attribution"><img src="https://img.shields.io/badge/AI%20Attribution-AIA%20PAI%20Nc%20Hin-orange?style=flat-square" alt="AI Attribution"></a>
 </p>
+<!-- ha-marketplace:exclude-end -->
 
 Reference custom Home Assistant integration for local Bluetooth Low Energy (BLE) control and monitoring of **Atomberg Smart Door Locks** (SL1, SL1 Pro).
 
@@ -68,6 +70,7 @@ Provides direct offline locking, unlocking, battery reporting, and physical cred
 
 ---
 
+<!-- ha-marketplace:exclude-start -->
 ## Installation
 
 ### Method 1: Via Home Assistant Marketplace (Recommended)
@@ -95,6 +98,7 @@ Provides direct offline locking, unlocking, battery reporting, and physical cred
 3. Restart Home Assistant Core.
 
 ---
+<!-- ha-marketplace:exclude-end -->
 
 ## Configuration & Onboarding
 
@@ -166,6 +170,7 @@ If you prefer running **[@dreadedlama/atomberg-lock](https://github.com/dreadedl
 
 ---
 
+<!-- ha-marketplace:exclude-start -->
 ## My Integrations & Lovelace Cards
 
 | Integration / Card | Category | Description | Status |
@@ -182,6 +187,7 @@ If you prefer running **[@dreadedlama/atomberg-lock](https://github.com/dreadedl
 | [Tinxy Local Python](https://github.com/selvakk2k/ha-tinxylocal) | Integration | Pure-Python local control for Tinxy smart switches and modules | `Stable` |
 
 ---
+<!-- ha-marketplace:exclude-end -->
 
 ## Credits & License
 
